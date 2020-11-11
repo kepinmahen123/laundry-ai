@@ -1,0 +1,57 @@
+<script>
+var buah = ["Apel", "Duren", "Nangka"]
+var stok = ["10", "11", "12"]
+var harga = ["10000", "11000", "12000"]
+
+      do {
+          var buahan = parseInt(prompt("Apa yang ingin anda lakukan?\n\n" + 
+                  "0. Daftar buah\n " + 
+                  "1. Tambah buah\n " + 
+                  "2. Kurangin buah\n " + 
+                  "3. Belanja buah"));
+           
+          if (buahan == 0) {
+            var daftarBuah = "";
+            for (var i = 0; i < buah.length; i++){
+            daftarBuah += [i] + ". " + buah[i] + " / " + "stok: " + stok[i] + " / " + "Rp. " + harga[i];
+            alert("Daftar Buah\n\n" + 
+                  daftarBuah);
+              }
+          }else if(buahan == 1) {
+            var produkA = prompt("Buah apa yg ingin ditambah?")
+            while(produkA = "");{
+              alert("Yakin?")
+              produkA = prompt("Buah apa yg ingin ditambah?")
+            } var stokA = prompt("Jumlah yg ingin ditambah :")
+              while(stokA = "");{
+                alert("Yakin?")
+                stokA = prompt("Jumlah yg ingin ditambah :" + produkA)
+              } var hargaA = prompt("Harga yg ingin diinput")
+                while (hargaA = ""); {
+                  alert("Yakin?")
+                  hargaA = prompt("Harga yg ingin diinput" + produkA)
+            }
+            if(buahan == 2) {
+              var buangBuah = "";
+              for (var i = 0; i < buah.length; i++){
+                daftarBuah += [i] 
+              }
+              }
+          }
+            
+          
+            
+        
+    }while (false) {
+      alert("Error!")
+    }
+
+
+
+
+
+
+
+
+
+</script>

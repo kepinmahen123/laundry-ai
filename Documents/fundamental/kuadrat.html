@@ -1,0 +1,54 @@
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kuadrat</title>
+</head>
+<script>
+    function kuadratkan(){
+        var num = parseInt(document.getElementById("num").value);
+        var kuadrat = Math.pow(num,2);
+        var output = "Hasil " + num + "<sup>2</sup>" + " = " + kuadrat;
+        document.getElementById("output").innerHTML = output
+    }
+</script>
+<body>
+    <p>Masukkan angka: </p>
+    <input type="number" id="num">
+    <button onclick="kuadratkan()">Kuadratkan!</button>
+    <br>
+    <h3 id="output"></h3>
+</body>
+</html> -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<script>
+    function findLetter(){
+        var kalimat = document.getElementById("kalimat").value;
+        var huruf = document.getElementById("huruf").value;
+        var output = 0;
+        var split = kalimat.split('');
+        console.log(split)
+        for (var i = 0; i < split.length; i++){
+            if(split[i] === huruf){
+                output++
+            }
+        }
+
+        return document.getElementById("output").innerHTML = "jumlah " + huruf + ' sebanyak ' + output + " buah";
+    }
+</script>
+<body>
+    <p>Ketik Kalimat</p>
+    <input type="text" id="kalimat">
+    <p>Ketik Karakter</p>
+    <input type="text" id="huruf">
+    <button onClick="findLetter()">hiya</button>
+</body>
+</html>

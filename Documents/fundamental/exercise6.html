@@ -1,0 +1,61 @@
+<script>
+    class Products{
+    constructor(_name, _price, _stock){
+        this.name = _name
+        this.price = _price
+        this.stock = _stock
+        this.qty = 0
+        this.total = 0
+        }
+    }
+
+    class FastFood extends Producst{
+        constructor(_name, _price, _stock, _expired){
+            super(_name, _price, _stock);
+            this.category = 1;
+            this.expired = _expired;
+        }
+    }
+    
+    class Cloth extends Products{
+        constructor(_name, _price, _stock, _size){
+            super(_name, _price, _stock);
+            this.category = 2;
+            this.size = _size;
+        }
+    }
+
+    class Gadget extends Products{
+        constructor(_name, _price, _stock, _warranty){
+            super(_name, _price, _stock);
+            this.category = 3;
+            this.warranty = _warranty;
+        }
+    }
+
+    let products = [
+        {category: 1, name : 'Ayam', price : '10000', stock : '10', expired : '1 minggu', qty : '0', total : '0'},
+        {category: 2, name : 'Baju', price : '50000', stock : '8', size : 'L', qty : '0', total : '0'},
+        {category: 3, name : 'Laptop', price : '1000000', stock : '5', warranty : 'yes', qty : '0', total : '0'}
+    ]
+
+    function showList(){
+        var daftarMenu = 'Daftar Barang \n\n '
+        for (var i = 0; i<products.length; i++){
+            if(products === 1){
+                daftarMenu =+ (i+1) + '.name' + products[i].name + ' | stock' + products[i].stock + ' | price' + products[i].price + ' | expired' + products[i].expired
+                
+            } else if(products === 2){
+                daftarMenu =+ (i+1) + '.name' + products[i].name + ' | stock' + products[i].stock + ' | price' + products[i].price + ' | size' + products[i].size
+                
+            } else if(products === 3){
+                daftarMenu =+ (i+1) + '.name' + products[i].name + ' | stock' + products[i].stock + ' | price' + products[i].price + ' | warranty' + products[i].warranty
+            } else {
+                alert('Error, try again!')
+            }
+        }
+    }
+    
+
+    
+</script>

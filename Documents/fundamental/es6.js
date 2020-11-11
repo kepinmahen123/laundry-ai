@@ -190,12 +190,12 @@
 // cart.push(angka);
 // console.log(cart)
 
-var arr = [1, 2, 3, 4, 5, 6];
-var newArr = arr.map((val, index) => {
-    if(val < 4){
-    return val * 2;
-    }else {
-        return val *3;
-    }
-});
-console.log(newArr);
+// var arr = [1, 2, 3, 4, 5, 6];
+// var newArr = arr.map((val, index) => {
+//     if(val < 4){
+//     return val * 2;
+//     }else {
+//         return val *3;
+//     }
+// });
+// console.log(newArr);

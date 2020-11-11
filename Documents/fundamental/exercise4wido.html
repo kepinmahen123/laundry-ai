@@ -1,0 +1,109 @@
+<script>
+    // Apa yang ingin anda lakukan?
+    // 0. Menampilkan daftar buah
+    // 1. Menambah buah
+    // 2. Menghapus buah
+    // 3. Membeli buah
+        var product = ["Keju", "Coklat", "Susu"];
+        var stock = [15, 20, 25];
+        var price = [10000, 20000, 25000];
+        var total = [0, 0, 0]
+        var qty = [0, 0, 0]
+        var menuCondition = true;
+    
+        do{
+        var menu = prompt("Apa yang ingin anda lakukan? \n\n" +
+            "0. Menampilkan daftar produk \n" +
+            "1. Menambah produk \n" +
+            "2. Menghapus produk \n" +
+            "3. Membeli produk"
+        )
+        if (menu == 0) { // Menu 0
+            var productList = "";
+            for (var i = 0; i < product.length; i++) {
+            productList += [i] + ". " + product[i] + " / " + stock[i] + " pcs / Rp. " + price[i] + "\n";   
+            }
+            alert("Daftar Produk: \n\n"+ 
+            productList);
+        } else if (menu == 1){ // Menu 1
+            var productP = prompt("Masukkan Nama Produk");
+            while (productP == ""){
+                alert("Masukkan nama produk!");
+                productP = prompt("Masukkan Nama Produk");
+            }
+            var stockP = prompt("Masukkan Quantity " + productP);
+            while (stockP == ""){
+                alert("Masukkan quantity produk!");
+                stockP = prompt("Masukkan Quantity " + productP)
+            }
+            var priceP = prompt("Masukkan Harga " + productP);
+            while (priceP == ""){
+                alert("Masukkan harga produk!");
+                priceP = prompt("Masukkan Harga " + productP)
+            }
+            alert(productP + " berhasil ditambahkan.")
+            product.push(productP);
+            stock.push(stockP);
+            price.push(priceP);
+        } else if (menu == 2){ // Menu 2
+            var productList = "";
+            for (var i = 0; i < product.length; i++) {
+            productList += [i] + ". " + product[i] + " / " + stock[i] + " pcs / Rp. " + price[i] + "\n";   
+            }
+            var deleteProduct = "";
+            deleteProduct = prompt("Pilih produk yang akan dihapus \n\n" + productList)
+            if(deleteProduct == ""){
+                deleteProduct = null;
+            }
+            else {product.splice(deleteProduct, 1);
+                alert ("Produk berhasil dihapus");
+            }
+        } else if (menu == 3){ // Menu 3
+            do {
+                for(var i = 0; i < product.length; i++){
+                    qty[i] = prompt("Masukkan jumlah " + product[i] + "\n" + "Stock " + product[i] + ": " + stock[i]);
+                    while (qty[i] > stock[i] || qty[i] < 0 || qty[i] == "") {
+                    alert("Kuantitas tidak sesuai \nSisa stock " + product[i] + ": " + stock[i]);
+                    qty[i] = prompt("Masukkan jumlah " + product[i] + "\n" + "Stock " + product[i] + ": " + stock[i]);
+                    }
+                }
+                if (qty[i] == 0 && qty[i] == 0 && qty[i] == 0 || qty[i] < 0 || qty[i] < 0 || qty[i] < 0) {
+                    alert("Minimal input kuantitas pada salah satu produk")
+                }
+            } while ((qty[i] == 0 && qty[i] == 0 && qty[i] == 0 || qty[i] < 0 || qty[i] < 0 || qty[i] < 0));
+            
+            var totalProduct = "";
+            var totalPrice = 0;
+            for (var i = 0; i < product.length; i++){
+                totalProduct += product[i] + ": " + qty[i] + " x " + price[i] + " = " + (qty[i] * price[i]) + "\n";
+                totalPrice += (qty[i] * price[i])
+            }
+            alert("Rincian pembelanjaan: \n\n" +
+                totalProduct + "\n" + "Total: Rp. " + totalPrice) // Harga total
+            do {
+                var biaya = prompt("Masukkan jumlah uang \n" +
+                    "Total yang harus dibayar = Rp. " + totalPrice) // Pembayaran
+    
+                if (biaya == totalPrice) {
+                    alert("Terima kasih telah berbelanja di toko kami \nUang kembali anda Rp. " + (biaya - totalPrice));
+                    for (var i = 0; i < product.length; i++){
+                    stock[i] = (stock[i] - qty[i]); // Mengurangi stock ketika ada pembelian
+                    }
+                } else if (biaya > totalPrice) {
+                    alert("Uang kembalian anda Rp. " + (biaya - totalPrice));
+                    alert("Terima kasih telah berbelanja di toko kami");
+                    for (var i = 0; i < product.length; i++){
+                    stock[i] = (stock[i] - qty[i]); // Mengurangi stock ketika ada pembelian
+                    }
+                } else if (biaya < totalPrice && biaya > 1) {
+                    alert("Belum dapat melakukan transaksi karena uang yang anda masukkan kurang sebesar Rp. " + (totalPrice - biaya));
+                } else if (biaya == 0 || biaya == "") {
+                    alert("Transaksi dibatalkan");
+                }
+            } while (biaya < totalPrice && biaya > 1);
+        
+        }
+        menuCondition = confirm("Kembali ke menu?") // Confirm
+        }while(menuCondition)
+    
+        </script> 

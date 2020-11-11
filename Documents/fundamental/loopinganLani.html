@@ -1,0 +1,77 @@
+<script>
+    var hargaA = 10000;
+    var hargaB = 15000;
+    var hargaC = 20000;
+
+    var stokA = 10;
+    var stokB = 8;
+    var stokC = 15;
+
+    var Apel = prompt("Masukkan jumlah Apel (@ Rp" + hargaA + ")\n (stok : "+ stokA +") :");
+    while(Apel>stokA){
+        alert("Tidak bisa membeli buah Apel lebih dari stok yang ada!");
+        var Apel = prompt("Masukkan jumlah Apel (@ Rp" + hargaA + ")\n (stok : "+ stokA +") :");
+    }
+    var Anggur = prompt("Masukkan jumlah Anggur (@ Rp" + hargaB + ")\n (stok : "+ stokB +") :");
+    while(Anggur>stokB){
+        alert("Tidak bisa membeli buah Anggur lebih dari stok yang ada!");
+        var Anggur = prompt("Masukkan jumlah Anggur (@ Rp" + hargaB + ")\n (stok : "+ stokB +") :");
+    }
+    var Jeruk = prompt("Masukkan jumlah Jeruk (@ Rp" + hargaC + ")\n (stok : "+ stokC +") :");
+    while(Jeruk>stokC){
+        alert("Tidak bisa membeli buah Jeruk lebih dari stok yang ada!");
+        var Jeruk = prompt("Masukkan jumlah Jeruk (@ Rp" + hargaC + ")\n (stok : "+ stokC +") :");
+    }
+
+    while(Apel == 0 && Anggur==0 && Jeruk==0 || Apel<0 || Jeruk<0 || Anggur<0){
+        alert("Error! Anda harus memasukkan angka >0 untuk minimal 1 jenis buah");
+        var Apel = prompt("Masukkan jumlah Apel (@ Rp" + hargaA + ")\n (stok : "+ stokA +") :");
+    while(Apel>stokA){
+        alert("Tidak bisa membeli buah Apel lebih dari stok yang ada!");
+        var Apel = prompt("Masukkan jumlah Apel (@ Rp" + hargaA + ")\n (stok : "+ stokA +") :");
+    }
+    var Anggur = prompt("Masukkan jumlah Anggur (@ Rp" + hargaB + ")\n (stok : "+ stokB +") :");
+    while(Anggur>stokB){
+        alert("Tidak bisa membeli buah Anggur lebih dari stok yang ada!");
+        var Anggur = prompt("Masukkan jumlah Anggur (@ Rp" + hargaB + ")\n (stok : "+ stokB +") :");
+    }
+    var Jeruk = prompt("Masukkan jumlah Jeruk (@ Rp" + hargaC + ")\n (stok : "+ stokC +") :");
+    while(Jeruk>stokC){
+        alert("Tidak bisa membeli buah Jeruk lebih dari stok yang ada!");
+        var Jeruk = prompt("Masukkan jumlah Jeruk (@ Rp" + hargaC + ")\n (stok : "+ stokC +") :");
+    }
+    }
+    
+    var resA = Apel * hargaA;
+    var resB = Anggur * hargaB;
+    var resC = Jeruk * hargaC;
+    
+    var final = resA+resB+resC;
+    var tax = final * 0.05;
+    var total = final + tax;
+    
+    alert(
+        "Detail pembelanjaan :\n"+
+        "\n 1. Apel : " + Apel + " x Rp10.000 = Rp" + resA +
+        "\n 2. Anggur : " + Anggur + " x Rp15.000 = Rp" + resB +
+        "\n 2. Jeruk : " + Jeruk + " x Rp20.000 = Rp" + resC +
+        "\n\n Total : Rp" + final + " + tax 5% Rp" + tax +
+        " = Rp" + total
+    )
+
+    var bayar = prompt("Total yang perlu dibayar: " + total + "\n Masukkan jumlah uang anda :");
+    while(bayar<total){
+        alert("Transaksi gagal, \nUang anda kurang Rp"+(total-bayar));
+        var bayar = prompt("Total yang perlu dibayar: " + total + "\n Masukkan jumlah uang anda :");
+    }
+
+    if (bayar>total){
+        var kembalian = "Transaksi berhasil, \nUang kembalian anda adalah Rp"+(bayar-total);
+    }
+    else{
+        var kembalian = "Transaksi berhasil, \nUang anda pas.";
+    }
+    alert(kembalian);
+    alert("Terima kasih!");
+
+    </script>

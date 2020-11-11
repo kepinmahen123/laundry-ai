@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        table, thead{
+            border: 1px solid black;
+        }
+        thead{
+            border-collapse: collapse;
+        }
+    </style>
+</head>
+<script>
+    var product = [];
+    function onBtnSubmit(){
+        var nama = document.getElementById("name").value;
+        var harga = document.getElementById("price").value;
+        var kondisi0 = "";
+        var kondisi0 = document.getElementsByName("condition").value;
+        if(kondisi0[0].checked){
+            kondisi += kondisi0[0].value;
+        }else{
+            kondisi += kondisi0[1].value;
+        }
+        var kategori = "";
+        var kategori0 = document.getElementById("kategori");
+        if (kategori0.selectedIndex === 0){
+            kategori += kategori0.options[0].text;
+        }else if (kategori0.selectedIndex === 1){
+            kategori0 += kategori0.options[1].text;
+        }else {
+            kategori0 += kategori0.options[2].text;
+        }
+        product.push({
+            nama: name,
+            harga: price,
+            kondisi: condition,
+            kategori: category,
+        });
+        tambahkan();
+    }
+    console.log(product);
+
+    function tambahkan(){
+        var output = "";
+        for (var i = 0; i < product.length; i++){
+            output +=
+            <tr>
+                <td>${product[i].name}</td>
+                <td>${product[i].price}</td>
+                <td>${product[i].condition}</td>
+                <td>${product[i].category}</td>
+            </tr>
+            ;
+        }
+        document.getElementById("output0").innerHTML = output;
+    }
+        var ArrProduct = [
+            
+        ]
+</script>
+<body>
+    <table width="30%" cellspacing="10">
+        <thead><h2>Form Produk</h2></thead>
+        <tr>
+            <td>Nama: <input type="text" id="name"></td>
+        </tr>
+        <tr>
+            <td>Harga: <input type="number" id="num"></td>
+        </tr>
+        <tr>
+            <td>Kondisi:
+        <input type="radio" name="condition" value="new">Baru
+        <input type="radio" name="condition" value="second">Bekas
+            </td>
+        </tr>
+        <tr>
+            <td>Kategori: 
+            <select id="Kategori">
+                <option value="Elektronik">Elektronik</option>
+                <option value="Pakaian">Pakaian</option>
+                <option value="Otomotif">Otomotif</option>
+            </select>
+            <br>
+            <br>
+            <button onclick="tambah()"></button>
+            
+            </td>
+        </tr>
+    </table>
+    <br>
+    <table width="60%" border="1" cellspacing="0">
+        <thead>
+            <h2>Daftar Produk</h2>
+        </thead>
+        <tr>
+        <th allign="center"><b>Nama</b></th>
+        <th allign="center"><b>Harga</b></th>
+        <th allign="center"><b>Kondisi</b></th>
+        <th allign="center"><b>Kategori</b></th>
+        </tr>
+        <tbody id="output">
+
+        </tbody>
+    </table>
+</body>
+</html>

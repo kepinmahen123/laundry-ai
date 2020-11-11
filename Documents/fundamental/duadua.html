@@ -1,0 +1,30 @@
+<script>
+    // Minta kuantitas 3 buah
+    // Kalkulasi total harga = harga * kuantitas
+    // Stok buah
+    // Apabila salah satu buah stoknya kurang maka transaksi dibatalkan
+
+    var qtyApel, qtyJeruk, qtyAnggur; // Minta dari user
+    var stockApel, stockJeruk, stockAnggur;
+
+    var priceApel = 10000;
+    var priceJeruk = 15000;
+    var priceAnggur = 20000;
+
+    stockApel = 10;
+    stockJeruk = 11;
+    stockAnggur = 12;
+
+    qtyApel = prompt('Masukkan jumlah apel Rp. ' + priceApel + '\n' + 'Stok:' + ' ' + stockApel);
+    if(qtyApel > stockApel) {
+        alert('Stok tidak terpenuhi')
+    } 
+    qtyJeruk = prompt('Masukkan jumlah jeruk Rp. ' + priceJeruk + '\n' + 'Stok:' + ' ' + stockJeruk);
+    if(qtyJeruk > stockJeruk) {
+        alert('Stok tidak terpenuhi')
+    } 
+    qtyAnggur = prompt('Masukkan jumlah anggur Rp. ' + priceAnggur + '\n' + 'Stok:' + ' ' + stockAnggur);
+    if(qtyAnggur > stockAnggur) {
+        alert('Stok tidak terpenuhi')
+    } 
+</script>

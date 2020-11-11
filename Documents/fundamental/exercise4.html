@@ -1,0 +1,72 @@
+<script>
+    var buah = ["Apel", "Pisang", "Salak"];
+
+var stok = [7, 8, 9];
+var harga = [10000, 11000, 12000];
+var kuantitas = [0, 0, 0];
+var total = [0, 0, 0];
+
+    do{     
+        var awal =prompt('Apa yang ingin anda lakukan? \n\n' 
+                    + '0. Untuk Menampilkan daftar buah \n' 
+                    + '1. Untuk Menambah buah \n' 
+                    + '2. Untuk Mengurangi buah \n' 
+                    + '3. Untuk Membeli buah \n\n' 
+                    + 'Input angka 0 sampai 3:'
+                );
+                if (awal == 0){ // Daftar buah
+                    var buahList = "";
+                    for (var i = 0; i < buah.length; i++) {    
+                    buahList += [i+1] + ". " + buah[i] + " " + "/" + " " + stok[i] + " " + "/" + " " + "Rp. " + harga[i] + "\n\n" 
+                    }
+                    alert("Daftar buah: \n\n" + 
+                    buahList);
+                    }else if(awal == 1){ // Tambahin buah
+                    var productA = prompt("Masukkan nama buah") 
+                    while (productA == ""){
+                        alert("Masukkan nama buah")
+                        productA = prompt("Masukkan nama buah");
+                    }
+                    var stokA = prompt("Masukkan stok buah " + productA)
+                    while (stokA == ""){
+                        alert("Masukkan stok buah")
+                        stokA = prompt("Masukkan stok buah " + productA)
+                    }
+                    var priceA = prompt("Masukkan harga buah " + productA)
+                    while (priceA == ""){
+                        alert("Masukkan harga buah")
+                        priceA = prompt('Masukkan harga buah ' + productA)
+                    }
+                    alert("Buah " + productA + " berhasil ditambah ke menu")
+                    buah.push(productA)
+                    stok.push(stokA)
+                    harga.push(priceA)
+        }
+        else if (awal == 2){ // Hilangin buah
+            var productBuah = "";
+            for (var i = 0; i < buah.length; i++) {
+            productBuah += [i+1] + ". " + buah[i] + " / " + stok[i] + " pcs / Rp. " + harga[i] + "\n";   
+            }
+            var deleteBuah = "";
+            deleteBuah = prompt("Pilih produk yang akan dihapus \n\n" + productBuah)
+            if(deleteBuah == ""){
+                deleteBuah = null;
+            }
+            else {buah.splice(deleteBuah, 1) -1;
+                alert ("Buah berhasil dihilangkan");
+            }
+        } else if (awal == 3) { // Beli buah
+            
+
+
+
+
+
+
+
+
+        }
+                mainMenu = confirm('Kembali ke menu utama?')
+        }while (mainMenu)
+        
+</script>

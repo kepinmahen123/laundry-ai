@@ -199,3 +199,28 @@
 //     }
 // });
 // console.log(newArr);
+
+// function firstLast(str){
+    
+// }
+
+var pAwal = 1000;
+var persenLahir = 0.02;
+var pendatang = 50;
+var akhir = 1500;
+
+
+var target = false;
+
+do{
+    var penduduk = "";
+        if(pAwal < akhir){
+            var awalPlusPersenPlusPend = (pAwal*persenLahir) + pAwal + pendatang
+        
+    }else{
+        
+    }
+
+}while(target);
+
+console.log();

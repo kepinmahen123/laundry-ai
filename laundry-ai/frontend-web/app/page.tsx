@@ -103,6 +103,16 @@ export default function Dashboard() {
     const dibuat = new Date(waktuDibuat);
     const selisihMs = Math.max(0, sekarang.getTime() - dibuat.getTime());
     const selisihMenitTotal = Math.floor(selisihMs / (1000 * 60));
+
+    function formatTanggalWaktu(waktuDibuat: string) {
+    if (!waktuDibuat) return "-";
+    const d = new Date(waktuDibuat);
+    const tanggal = String(d.getDate()).padStart(2, '0');
+    const bulan = String(d.getMonth() + 1).padStart(2, '0');
+    const tahun = d.getFullYear();
+    const jam = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    return `${tanggal}/${bulan}/${tahun} - ${jam} WIB`;
+  }
     
     if (selisihMenitTotal < 60) return `${selisihMenitTotal} mnt lalu`;
     const selisihJam = Math.floor(selisihMenitTotal / 60);
@@ -509,7 +519,7 @@ export default function Dashboard() {
                           <div className="text-xs font-bold mb-1 opacity-60">#{item.id}</div>
                           <div className="font-bold">{item.customer_name}</div>
                           <div className={`text-xs mt-1 font-medium ${textMuted}`}>
-                            {item.created_at ? new Date(item.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : "-"} WIB
+                            {formatTanggalWaktu(item.created_at)}
                           </div>
                         </td>
                         <td className="p-5 min-w-[200px]">
@@ -567,7 +577,7 @@ export default function Dashboard() {
                       </div>
                       
                       <div className={`flex justify-between items-center text-xs font-medium ${textMuted}`}>
-                        <span>🕒 {item.created_at ? new Date(item.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : "-"} WIB</span>
+                        <span>🕒 {formatTanggalWaktu(item.created_at)}</span>
                         {item.status_logistik !== 'selesai' && (
                           <span className={`font-bold px-2 py-1 rounded border flex items-center gap-1 bg-red-500/10 text-red-500 dark:text-red-400 border-red-500/20`}>
                             <span className="animate-pulse">⏳</span> {hitungWaktuTunggu(item.created_at)}

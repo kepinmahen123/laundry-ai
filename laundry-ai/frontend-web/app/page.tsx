@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from "@react-google-maps/api";
 
 // KONFIGURASI SUPABASE & TELEGRAM
@@ -18,48 +17,30 @@ const defaultMapCenter = { lat: -6.2088, lng: 106.8456 };
 const mapContainerStyle = { width: "100%", height: "600px", borderRadius: "16px" };
 
 export default function Dashboard() {
+  const router = useRouter();
+
+  // STATE UTAMA
   const [pesanan, setPesanan] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]); 
   const [session, setSession] = useState<any>(null); 
   const [loading, setLoading] = useState(true); 
+  
+  // STATE UI & LAYOUT
   const [filterStatus, setFilterStatus] = useState<string>("semua");
   const [viewMode, setViewMode] = useState<string>("table");
-  
-  const [isDarkMode, setIsDarkMode] = useState(true); // Default Dark Mode for better Glass effect
+  const [isDarkMode, setIsDarkMode] = useState(true); 
   const [activeMenu, setActiveMenu] = useState("Dashboard");
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile Sidebar State
+  const [completionDate, setCompletionDate] = useState<string | null>(null); // Tanggal Selesai
   
+  // STATE FILTER
   const [sortBy, setSortBy] = useState<"terbaru" | "terdekat">("terbaru");
   const [filterTanggal, setFilterTanggal] = useState<string>(() => {
     const d = new Date();
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }); 
 
-  export default function Page() {
-  // 👇 TARUH KODE LOGIKA DI SINI (Sebelum tulisan return) 👇
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [uploadedPhoto, setUploadedPhoto] = useState<string | null>(null);
-  const [completionDate, setCompletionDate] = useState<string | null>(null);
-
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      const reader = new FileReader();
-      
-      reader.onloadend = () => {
-        setUploadedPhoto(reader.result as string);
-        const sekarang = new Date();
-        const opsiOtomatis: Intl.DateTimeFormatOptions = {
-          year: 'numeric', month: 'long', day: 'numeric',
-          hour: '2-digit', minute: '2-digit', second: '2-digit'
-        };
-        setCompletionDate(sekarang.toLocaleDateString('id-ID', opsiOtomatis) + ' WIB');
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-  
-  const router = useRouter();
-
+  // STATE MODAL
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isExporting, setIsExporting] = useState(false); 
@@ -74,6 +55,7 @@ export default function Dashboard() {
     name: "", alamat_detail: "", jarak_ke_toko_km: "", latitude: "", longitude: ""
   });
 
+  // STATE KAMERA/FOTO
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [deliveryPhoto, setDeliveryPhoto] = useState<File | null>(null);
@@ -151,6 +133,7 @@ export default function Dashboard() {
     }
   }
 
+  // FUNGSI UPLOAD FOTO & CATAT WAKTU SELESAI
   async function kirimBuktiSelesai(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedOrder || !deliveryPhoto) return;
@@ -160,7 +143,16 @@ export default function Dashboard() {
       const { error } = await supabase.from("orders").update({ status_logistik: "selesai" }).eq("id", selectedOrder.id);
       if (error) throw new Error(error.message);
 
-      const pesanCaption = `✅ *PESANAN SELESAI*\n\nHalo kak ${selectedOrder.customer_name}! Cucian kamu sudah selesai diproses dan kurir kami telah menuntaskan pengiriman. Terima kasih! 📦✨`;
+      // Ambil waktu saat ini persis saat foto dikirim
+      const sekarang = new Date();
+      const opsiOtomatis: Intl.DateTimeFormatOptions = {
+        year: 'numeric', month: 'long', day: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
+      };
+      const waktuSelesai = sekarang.toLocaleDateString('id-ID', opsiOtomatis) + ' WIB';
+      setCompletionDate(waktuSelesai);
+
+      const pesanCaption = `✅ *PESANAN SELESAI*\n\nHalo kak ${selectedOrder.customer_name}! Cucian kamu sudah selesai diproses dan tiba di lokasi.\n🕒 *Waktu Selesai:* ${waktuSelesai}\n📦 Terima kasih!`;
       const fileData = new FormData();
       fileData.append("chat_id", chatId);
       fileData.append("photo", deliveryPhoto);
@@ -170,8 +162,13 @@ export default function Dashboard() {
       await fetch(`https://api.telegram.org/bot${telegramToken}/sendPhoto`, { method: "POST", body: fileData });
 
       if (livePreviewUrl) setBuktiFotoUrls(prev => ({ ...prev, [selectedOrder.id]: livePreviewUrl }));
-    } catch (err) { alert("Gagal memproses penyelesaian pesanan."); } 
-    finally {
+      
+      // Tampilkan Notifikasi Waktu ke Kurir
+      alert(`🎉 Pengiriman Berhasil!\nWaktu Penyelesaian: ${waktuSelesai}`);
+      
+    } catch (err) { 
+      alert("Gagal memproses penyelesaian pesanan."); 
+    } finally {
       setIsUploadingPhoto(false); setIsPhotoModalOpen(false); setSelectedOrder(null); setDeliveryPhoto(null); ambilData(); 
     }
   }
@@ -208,7 +205,7 @@ export default function Dashboard() {
       }
     ]);
     setIsSubmittingCustomer(false);
-    if (error) alert("Gagal menyimpan data pelanggan. Pastikan Schema Cache Supabase sudah di-reload. Error: " + error.message);
+    if (error) alert("Gagal menyimpan data pelanggan. Error: " + error.message);
     else { setIsCustomerModalOpen(false); setCustomerFormData({ name: "", alamat_detail: "", jarak_ke_toko_km: "", latitude: "", longitude: "" }); ambilData(); }
   }
 
@@ -253,9 +250,7 @@ export default function Dashboard() {
   const totalAntreanAktif = dataTersaring.filter((item) => item.status_logistik !== "selesai").length;
   const totalBeratTersaring = dataTersaring.reduce((acc, item) => acc + Number(item.berat_pesanan_kg || 0), 0);
 
-  // ==========================================
-  // 🔮 GLASSMORPHISM THEME CONFIGURATION
-  // ==========================================
+  // GLASSMORPHISM THEME CONFIGURATION
   const dynamicBg = isDarkMode 
     ? "bg-gradient-to-br from-indigo-950 via-gray-900 to-purple-950 text-white" 
     : "bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-100 text-gray-900";
@@ -275,14 +270,38 @@ export default function Dashboard() {
   return (
     <div className={`flex h-screen overflow-hidden font-sans transition-colors duration-500 relative ${dynamicBg}`}>
       
-      {/* Abstract Background Orbs for Glass Effect */}
+      {/* Abstract Background Orbs */}
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-blue-500/20 blur-[120px] pointer-events-none"></div>
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-purple-500/20 blur-[120px] pointer-events-none"></div>
 
-      {/* --- SIDEBAR --- */}
-      <aside className={`w-64 flex flex-col justify-between z-10 ${glassPanel} border-r-0 border-r-white/10 m-4 rounded-3xl`}>
+      {/* --- TOMBOL HAMBURGER MOBILE --- */}
+      <button 
+        onClick={() => setIsSidebarOpen(true)}
+        className={`md:hidden fixed top-4 left-4 z-40 p-3 rounded-xl ${glassPanel} active:scale-95`}
+      >
+        <span className="text-xl">☰</span>
+      </button>
+
+      {/* --- BACKDROP MOBILE (GELAP SAAT SIDEBAR BUKA) --- */}
+      {isSidebarOpen && (
+        <div 
+          onClick={() => setIsSidebarOpen(false)} 
+          className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+        />
+      )}
+
+      {/* --- SIDEBAR RESPONSIVE --- */}
+      <aside className={`
+        fixed md:relative inset-y-0 left-0 z-50 w-64 flex flex-col justify-between ${glassPanel} 
+        border-r border-r-white/10 md:m-4 md:rounded-3xl
+        transform transition-transform duration-300 ease-in-out
+        ${isSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
+      `}>
+        {/* Tombol Close Mobile */}
+        <button onClick={() => setIsSidebarOpen(false)} className="md:hidden absolute top-4 right-4 text-white opacity-70 text-2xl font-bold">✕</button>
+
         <div>
-          <div className="p-6 flex items-center gap-3">
+          <div className="p-6 flex items-center gap-3 mt-4 md:mt-0">
             <div className="w-10 h-10 bg-gradient-to-tr from-blue-600 to-purple-500 text-white rounded-xl flex items-center justify-center font-bold text-xl shadow-lg">L</div>
             <div>
               <h2 className="font-extrabold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">LaundroAI</h2>
@@ -291,13 +310,17 @@ export default function Dashboard() {
           </div>
 
           <nav className="mt-4 px-4 space-y-2">
-            {['Dashboard', 'Tracking', 'Inbox', 'Database Customers'].map((menu) => (
-              <button key={menu} onClick={() => setActiveMenu(menu)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold transition-all duration-300 ${
+            {['Dashboard', 'Tracking', 'Database Customers'].map((menu) => (
+              <button 
+                key={menu} 
+                onClick={() => { setActiveMenu(menu); setIsSidebarOpen(false); }} 
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold transition-all duration-300 ${
                   activeMenu === menu 
                   ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30 border border-white/20" 
                   : `${isDarkMode ? 'text-gray-400 hover:bg-white/10' : 'text-gray-600 hover:bg-white/40'}`
-                }`}>
-                {menu === 'Dashboard' && "📊"} {menu === 'Tracking' && "📍"} {menu === 'Inbox' && "📥"} {menu === 'Database Customers' && "👥"}
+                }`}
+              >
+                {menu === 'Dashboard' && "📊"} {menu === 'Tracking' && "📍"} {menu === 'Database Customers' && "👥"}
                 <span className="text-sm">{menu}</span>
               </button>
             ))}
@@ -315,7 +338,7 @@ export default function Dashboard() {
       </aside>
 
       {/* --- KONTEN UTAMA --- */}
-      <main className="flex-1 overflow-y-auto p-6 lg:p-10 scroll-smooth z-10">
+      <main className="flex-1 overflow-y-auto p-6 lg:p-10 pt-20 md:pt-10 scroll-smooth z-10 w-full max-w-full">
         
         {/* MODUL TRACKING */}
         {activeMenu === "Tracking" ? (
@@ -330,7 +353,7 @@ export default function Dashboard() {
                     <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
                   </div>
                 ) : (
-                  <div className="w-full h-full rounded-2xl overflow-hidden shadow-inner">
+                  <div className="w-full h-full min-h-[500px] rounded-2xl overflow-hidden shadow-inner">
                     <GoogleMap mapContainerStyle={mapContainerStyle} center={defaultMapCenter} zoom={12}>
                       {dataTersaring.map((item) => {
                         if (!item.latitude || !item.longitude) return null;
@@ -355,7 +378,7 @@ export default function Dashboard() {
 
         // MODUL DATABASE
         ) : activeMenu === "Database Customers" ? (
-          <div className="max-w-7xl mx-auto">
+          <div className="max-w-7xl mx-auto overflow-x-auto">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
               <div>
                 <h1 className="text-3xl font-extrabold tracking-tight">Database Pelanggan 👥</h1>
@@ -373,7 +396,7 @@ export default function Dashboard() {
                 <p className={textMuted}>Klik tombol di atas untuk menambah profil.</p>
               </div>
             ) : (
-              <div className={`rounded-3xl overflow-hidden ${glassPanel}`}>
+              <div className={`rounded-3xl overflow-x-auto ${glassPanel}`}>
                 <table className="min-w-full text-left">
                   <thead className={tableHeaderGlass}>
                     <tr>
@@ -386,24 +409,16 @@ export default function Dashboard() {
                   <tbody className={`divide-y ${isDarkMode ? 'divide-white/5' : 'divide-black/5'}`}>
                     {customers.map((c) => (
                       <tr key={c.id} className={`transition-colors ${rowHover}`}>
-                        <td className="p-5 font-bold">{c.name}</td>
-                        <td className="p-5 text-sm">{c.alamat_detail}</td>
-                        <td className="p-5 font-bold text-indigo-400">{c.jarak_ke_toko_km} km</td>
-                        <td className="p-5 text-sm font-mono opacity-80">{c.latitude}, {c.longitude}</td>
+                        <td className="p-5 font-bold whitespace-nowrap">{c.name}</td>
+                        <td className="p-5 text-sm min-w-[200px]">{c.alamat_detail}</td>
+                        <td className="p-5 font-bold text-indigo-400 whitespace-nowrap">{c.jarak_ke_toko_km} km</td>
+                        <td className="p-5 text-sm font-mono opacity-80 whitespace-nowrap">{c.latitude}, {c.longitude}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             )}
-          </div>
-
-        // MODUL PLACEHOLDER
-        ) : activeMenu !== "Dashboard" ? (
-          <div className="h-full flex flex-col items-center justify-center text-center opacity-60">
-            <div className="text-6xl mb-4">🚧</div>
-            <h2 className="text-2xl font-bold">Modul {activeMenu}</h2>
-            <p className={`mt-2 ${textMuted}`}>Fitur ini sedang dalam tahap pengembangan.</p>
           </div>
 
         // MODUL DASHBOARD UTAMA
@@ -420,7 +435,7 @@ export default function Dashboard() {
             </div>
 
             {/* METRIK KARTU KACA */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6 mb-8">
               <div className={`p-6 rounded-3xl ${glassPanel} border-t-4 border-t-yellow-400`}>
                 <h3 className={`text-xs font-bold uppercase tracking-wider ${textMuted}`}>Antrean Aktif</h3>
                 <p className="text-4xl font-extrabold mt-3">{totalAntreanAktif}</p>
@@ -440,27 +455,27 @@ export default function Dashboard() {
               <div className="flex gap-3 flex-wrap">
                 <div className={`flex p-1 rounded-xl w-fit ${glassPanel}`}>
                   {["semua", "pickup", "selesai"].map((s) => (
-                    <button key={s} onClick={() => setFilterStatus(s)} className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${filterStatus === s ? "bg-white/20 shadow-sm" : "opacity-60 hover:opacity-100"}`}>
+                    <button key={s} onClick={() => setFilterStatus(s)} className={`px-4 md:px-5 py-2 rounded-lg text-xs md:text-sm font-bold transition-all ${filterStatus === s ? "bg-white/20 shadow-sm" : "opacity-60 hover:opacity-100"}`}>
                       {s.toUpperCase()}
                     </button>
                   ))}
                 </div>
                 <div className={`flex items-center gap-2 px-4 py-1 rounded-xl ${glassPanel}`}>
                   <span className="text-sm font-bold opacity-60">📅</span>
-                  <input type="date" value={filterTanggal} onChange={(e) => setFilterTanggal(e.target.value)} className={`text-sm font-bold outline-none bg-transparent cursor-pointer ${isDarkMode ? 'dark-calendar' : ''}`} style={{ colorScheme: isDarkMode ? 'dark' : 'light' }} />
+                  <input type="date" value={filterTanggal} onChange={(e) => setFilterTanggal(e.target.value)} className={`text-xs md:text-sm font-bold outline-none bg-transparent cursor-pointer`} style={{ colorScheme: isDarkMode ? 'dark' : 'light' }} />
                   {filterTanggal && <button onClick={() => setFilterTanggal("")} className="text-red-400 hover:text-red-500 ml-1 text-xs font-bold transition-colors">✕</button>}
                 </div>
               </div>
               
               <div className="flex gap-3 flex-wrap">
                 <div className={`flex p-1 rounded-xl ${glassPanel}`}>
-                  <button onClick={() => setSortBy("terbaru")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${sortBy === "terbaru" ? "bg-white/20 shadow-sm" : "opacity-60 hover:opacity-100"}`}>⏱️ Terbaru</button>
-                  <button onClick={() => setSortBy("terdekat")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${sortBy === "terdekat" ? "bg-white/20 shadow-sm" : "opacity-60 hover:opacity-100"}`}>📍 Terdekat</button>
+                  <button onClick={() => setSortBy("terbaru")} className={`px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-all ${sortBy === "terbaru" ? "bg-white/20 shadow-sm" : "opacity-60 hover:opacity-100"}`}>⏱️ Terbaru</button>
+                  <button onClick={() => setSortBy("terdekat")} className={`px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-all ${sortBy === "terdekat" ? "bg-white/20 shadow-sm" : "opacity-60 hover:opacity-100"}`}>📍 Terdekat</button>
                 </div>
-                <button onClick={generateDanKirimLaporan} disabled={isExporting} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2 ${glassPanel} hover:bg-white/10`}>
-                  {isExporting ? "⏳ Ekspor..." : "📊 Unduh Excel"}
+                <button onClick={generateDanKirimLaporan} disabled={isExporting} className={`px-4 py-2 rounded-xl text-xs md:text-sm font-bold transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2 ${glassPanel} hover:bg-white/10`}>
+                  {isExporting ? "⏳ Ekspor..." : "📊 Excel"}
                 </button>
-                <div className={`flex p-1 rounded-xl ${glassPanel}`}>
+                <div className={`flex p-1 rounded-xl hidden md:flex ${glassPanel}`}>
                   <button onClick={() => setViewMode("table")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === "table" ? "bg-white/20 shadow-sm" : "opacity-60 hover:opacity-100"}`}>TABEL</button>
                   <button onClick={() => setViewMode("grid")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === "grid" ? "bg-white/20 shadow-sm" : "opacity-60 hover:opacity-100"}`}>GRID</button>
                 </div>
@@ -475,7 +490,7 @@ export default function Dashboard() {
                 <p className={textMuted}>Belum ada data pesanan pada tanggal atau filter ini.</p>
               </div>
             ) : viewMode === "table" ? (
-              <div className={`rounded-3xl overflow-hidden ${glassPanel}`}>
+              <div className={`rounded-3xl overflow-x-auto ${glassPanel}`}>
                 <table className="min-w-full text-left">
                   <thead className={tableHeaderGlass}>
                     <tr>
@@ -489,33 +504,33 @@ export default function Dashboard() {
                   <tbody className={`divide-y ${isDarkMode ? 'divide-white/5' : 'divide-black/5'}`}>
                     {dataTersaring.map((item) => (
                       <tr key={item.id} className={`transition-colors ${rowHover}`}>
-                        <td className="p-5">
+                        <td className="p-5 min-w-[150px]">
                           <div className="text-xs font-bold mb-1 opacity-60">#{item.id}</div>
                           <div className="font-bold">{item.customer_name}</div>
                           <div className={`text-xs mt-1 font-medium ${textMuted}`}>
                             {item.created_at ? new Date(item.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : "-"} WIB
                           </div>
                         </td>
-                        <td className="p-5">
+                        <td className="p-5 min-w-[200px]">
                           <div className="text-sm opacity-80">{item.alamat_detail}</div>
                         </td>
-                        <td className="p-5">
-                          <div className="font-bold text-indigo-400">{item.jarak_ke_toko_km} <span className="text-xs text-white/50">km</span></div>
+                        <td className="p-5 min-w-[120px]">
+                          <div className="font-bold text-indigo-400">{item.jarak_ke_toko_km} <span className="text-xs text-black/50 dark:text-white/50">km</span></div>
                           <div className={`text-sm mt-1 ${textMuted}`}>{item.berat_pesanan_kg} kg</div>
                         </td>
-                        <td className="p-5 text-center align-middle">
-                          <span className={`px-3 py-1.5 font-bold rounded-lg text-[11px] tracking-wider uppercase block w-max mx-auto ${item.status_logistik === 'selesai' ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'}`}>
+                        <td className="p-5 text-center align-middle min-w-[150px]">
+                          <span className={`px-3 py-1.5 font-bold rounded-lg text-[11px] tracking-wider uppercase block w-max mx-auto ${item.status_logistik === 'selesai' ? 'bg-green-500/20 text-green-500 dark:text-green-400 border border-green-500/30' : 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border border-yellow-500/30'}`}>
                             {item.status_logistik}
                           </span>
                           {item.status_logistik !== 'selesai' && (
-                            <div className={`mt-2 text-[11px] font-bold px-2 py-1 rounded-md w-max mx-auto border flex items-center gap-1 bg-red-500/10 text-red-400 border-red-500/20`}>
+                            <div className={`mt-2 text-[11px] font-bold px-2 py-1 rounded-md w-max mx-auto border flex items-center gap-1 bg-red-500/10 text-red-500 dark:text-red-400 border-red-500/20`}>
                               <span className="animate-pulse">⏳</span> {hitungWaktuTunggu(item.created_at)}
                             </div>
                           )}
                         </td>
-                        <td className="p-5 text-center align-middle">
+                        <td className="p-5 text-center align-middle min-w-[150px]">
                           {item.status_logistik !== 'selesai' ? (
-                            <button onClick={() => bukaModalFoto(item.id, item.customer_name)} className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg transition-all active:scale-95 whitespace-nowrap border border-white/20">Kirim Paket 🚀</button>
+                            <button onClick={() => bukaModalFoto(item.id, item.customer_name)} className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white px-4 py-2 rounded-xl text-xs md:text-sm font-bold shadow-lg transition-all active:scale-95 whitespace-nowrap border border-white/20">Kirim Paket 🚀</button>
                           ) : (
                             <button onClick={() => lihatFotoBukti(item.id)} className={`text-xs font-bold px-3 py-2 rounded-lg transition-all ${glassPanel} hover:bg-white/10`}>👁️ Cek Foto</button>
                           )}
@@ -534,7 +549,7 @@ export default function Dashboard() {
                         <div className="text-xs font-bold mb-1 opacity-60">#{item.id}</div>
                         <h4 className="text-xl font-bold">{item.customer_name}</h4>
                       </div>
-                      <span className={`px-3 py-1 font-bold rounded-lg text-[10px] tracking-wider uppercase ${item.status_logistik === 'selesai' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                      <span className={`px-3 py-1 font-bold rounded-lg text-[10px] tracking-wider uppercase ${item.status_logistik === 'selesai' ? 'bg-green-500/20 text-green-500 dark:text-green-400' : 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400'}`}>
                         {item.status_logistik}
                       </span>
                     </div>
@@ -544,16 +559,16 @@ export default function Dashboard() {
                         <span className="opacity-50">📍</span>
                         <p className="text-sm opacity-80">{item.alamat_detail}</p>
                       </div>
-                      <div className="flex justify-between items-center bg-black/20 p-3 rounded-xl border border-white/5">
+                      <div className="flex justify-between items-center bg-black/10 dark:bg-black/20 p-3 rounded-xl border border-white/5">
                         <div className="font-bold">🛵 {item.jarak_ke_toko_km} <span className="text-xs opacity-50 font-normal">km</span></div>
-                        <div className="w-[1px] h-4 bg-white/20"></div>
+                        <div className="w-[1px] h-4 bg-black/20 dark:bg-white/20"></div>
                         <div className="font-bold">📦 {item.berat_pesanan_kg} <span className="text-xs opacity-50 font-normal">kg</span></div>
                       </div>
                       
                       <div className={`flex justify-between items-center text-xs font-medium ${textMuted}`}>
                         <span>🕒 {item.created_at ? new Date(item.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : "-"} WIB</span>
                         {item.status_logistik !== 'selesai' && (
-                          <span className={`font-bold px-2 py-1 rounded border flex items-center gap-1 bg-red-500/10 text-red-400 border-red-500/20`}>
+                          <span className={`font-bold px-2 py-1 rounded border flex items-center gap-1 bg-red-500/10 text-red-500 dark:text-red-400 border-red-500/20`}>
                             <span className="animate-pulse">⏳</span> {hitungWaktuTunggu(item.created_at)}
                           </span>
                         )}
@@ -581,15 +596,15 @@ export default function Dashboard() {
               <h2 className="font-bold text-lg">➕ Buat Pesanan Baru</h2>
               <button onClick={() => setIsModalOpen(false)} className="opacity-70 hover:opacity-100 text-2xl">×</button>
             </div>
-            <form onSubmit={handleTambahPesanan} className="p-6 space-y-4">
+            <form onSubmit={handleTambahPesanan} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
               <div className="relative">
                 <label className="block text-sm font-bold mb-1 opacity-80">Nama Pelanggan (Autofill)</label>
                 <input type="text" required value={formData.customer_name} onChange={(e) => { setFormData({...formData, customer_name: e.target.value}); setShowSuggestions(true); }} onFocus={() => setShowSuggestions(true)} onBlur={() => setTimeout(() => setShowSuggestions(false), 200)} className={`w-full py-3 px-4 rounded-xl outline-none transition-all ${glassInput}`} placeholder="Mulai ketik nama..." />
                 
                 {showSuggestions && formData.customer_name && customers.filter(c => c.name.toLowerCase().includes(formData.customer_name.toLowerCase())).length > 0 && (
-                  <ul className={`absolute z-50 w-full mt-2 rounded-xl max-h-48 overflow-y-auto backdrop-blur-2xl bg-gray-900/80 border border-white/10 shadow-2xl`}>
+                  <ul className={`absolute z-50 w-full mt-2 rounded-xl max-h-48 overflow-y-auto backdrop-blur-2xl bg-gray-900/80 border border-white/10 shadow-2xl text-white`}>
                     {customers.filter(c => c.name.toLowerCase().includes(formData.customer_name.toLowerCase())).map(c => (
-                      <li key={c.id} onClick={() => { setFormData({...formData, customer_name: c.name, alamat_detail: c.alamat_detail, jarak_ke_toko_km: c.jarak_ke_toko_km, latitude: c.latitude, longitude: c.longitude}); setShowSuggestions(false); }} className={`px-4 py-3 cursor-pointer text-sm font-bold border-b border-white/5 last:border-b-0 hover:bg-white/10 transition-colors text-white`}>
+                      <li key={c.id} onClick={() => { setFormData({...formData, customer_name: c.name, alamat_detail: c.alamat_detail, jarak_ke_toko_km: c.jarak_ke_toko_km, latitude: c.latitude, longitude: c.longitude}); setShowSuggestions(false); }} className={`px-4 py-3 cursor-pointer text-sm font-bold border-b border-white/5 last:border-b-0 hover:bg-white/10 transition-colors`}>
                         {c.name} <span className="block text-xs font-normal opacity-60 truncate">{c.alamat_detail}</span>
                       </li>
                     ))}
@@ -603,7 +618,7 @@ export default function Dashboard() {
               </div>
               
               <div className="border-t border-white/10 pt-4 mt-2">
-                <label className="block text-sm font-bold mb-3 text-indigo-400">📍 Koordinat Maps</label>
+                <label className="block text-sm font-bold mb-3 text-indigo-500 dark:text-indigo-400">📍 Koordinat Maps</label>
                 <div className="grid grid-cols-2 gap-4">
                   <div><label className="block text-xs font-bold mb-1 opacity-70">Latitude</label><input type="number" step="any" required value={formData.latitude} onChange={(e) => setFormData({...formData, latitude: e.target.value})} className={`w-full px-3 py-2 text-sm rounded-xl outline-none transition-all ${glassInput}`} /></div>
                   <div><label className="block text-xs font-bold mb-1 opacity-70">Longitude</label><input type="number" step="any" required value={formData.longitude} onChange={(e) => setFormData({...formData, longitude: e.target.value})} className={`w-full px-3 py-2 text-sm rounded-xl outline-none transition-all ${glassInput}`} /></div>
@@ -611,7 +626,7 @@ export default function Dashboard() {
               </div>
 
               <div className="pt-4 flex gap-3">
-                <button type="button" onClick={() => setIsModalOpen(false)} className={`flex-1 font-bold py-3 rounded-xl transition-all hover:bg-white/10 bg-white/5 border border-white/10`}>Batal</button>
+                <button type="button" onClick={() => setIsModalOpen(false)} className={`flex-1 font-bold py-3 rounded-xl transition-all bg-black/10 hover:bg-black/20 dark:bg-white/5 dark:hover:bg-white/10 border border-white/10`}>Batal</button>
                 <button type="submit" disabled={isSubmitting} className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 font-bold py-3 rounded-xl hover:opacity-90 transition-all disabled:opacity-50 border border-white/20 shadow-lg text-white">Simpan</button>
               </div>
             </form>
@@ -623,16 +638,16 @@ export default function Dashboard() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className={`rounded-3xl w-full max-w-md overflow-hidden ${glassPanel} border-white/20 shadow-2xl`}>
             <div className="bg-white/10 border-b border-white/10 p-5 flex justify-between items-center rounded-t-3xl">
-              <h2 className="font-bold text-lg">👥 Tambah Customer Database</h2>
+              <h2 className="font-bold text-lg">👥 Tambah Customer</h2>
               <button onClick={() => setIsCustomerModalOpen(false)} className="opacity-70 hover:opacity-100 text-2xl">×</button>
             </div>
-            <form onSubmit={handleTambahCustomer} className="p-6 space-y-4">
+            <form onSubmit={handleTambahCustomer} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
               <div><label className="block text-sm font-bold mb-1 opacity-80">Nama Lengkap</label><input type="text" required value={customerFormData.name} onChange={(e) => setCustomerFormData({...customerFormData, name: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} /></div>
               <div><label className="block text-sm font-bold mb-1 opacity-80">Alamat Default</label><textarea required value={customerFormData.alamat_detail} onChange={(e) => setCustomerFormData({...customerFormData, alamat_detail: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} rows={2}></textarea></div>
               <div><label className="block text-sm font-bold mb-1 opacity-80">Jarak Default (KM)</label><input type="number" step="0.1" required value={customerFormData.jarak_ke_toko_km} onChange={(e) => setCustomerFormData({...customerFormData, jarak_ke_toko_km: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} /></div>
               
               <div className="border-t border-white/10 pt-4 mt-2">
-                <label className="block text-sm font-bold mb-3 text-purple-400">📍 Titik Koordinat Rumah</label>
+                <label className="block text-sm font-bold mb-3 text-purple-500 dark:text-purple-400">📍 Titik Koordinat Rumah</label>
                 <div className="grid grid-cols-2 gap-4">
                   <div><label className="block text-xs font-bold mb-1 opacity-70">Latitude</label><input type="number" step="any" required value={customerFormData.latitude} onChange={(e) => setCustomerFormData({...customerFormData, latitude: e.target.value})} className={`w-full px-3 py-2 text-sm rounded-xl outline-none transition-all ${glassInput}`} /></div>
                   <div><label className="block text-xs font-bold mb-1 opacity-70">Longitude</label><input type="number" step="any" required value={customerFormData.longitude} onChange={(e) => setCustomerFormData({...customerFormData, longitude: e.target.value})} className={`w-full px-3 py-2 text-sm rounded-xl outline-none transition-all ${glassInput}`} /></div>
@@ -640,7 +655,7 @@ export default function Dashboard() {
               </div>
 
               <div className="pt-4 flex gap-3">
-                <button type="button" onClick={() => setIsCustomerModalOpen(false)} className={`flex-1 font-bold py-3 rounded-xl transition-all hover:bg-white/10 bg-white/5 border border-white/10`}>Batal</button>
+                <button type="button" onClick={() => setIsCustomerModalOpen(false)} className={`flex-1 font-bold py-3 rounded-xl transition-all bg-black/10 hover:bg-black/20 dark:bg-white/5 dark:hover:bg-white/10 border border-white/10`}>Batal</button>
                 <button type="submit" disabled={isSubmittingCustomer} className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 font-bold py-3 rounded-xl hover:opacity-90 transition-all disabled:opacity-50 shadow-lg border border-white/20 text-white">Simpan</button>
               </div>
             </form>
@@ -648,29 +663,16 @@ export default function Dashboard() {
         </div>
       )}
 
-      return (
-    <div className="min-h-screen bg-slate-950 text-white flex relative overflow-x-hidden">
-      
-      {/* Tombol Hamburger */}
-      <button onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
-        {/* ... (isi kode layout panjang yang saya berikan sebelumnya) ... */}
-      </button>
-
-      {/* ... sisa kode UI ... */}
-
-    </div>
-  );
-
       {/* KAMERA BUKTI PENGIRIMAN */}
       {isPhotoModalOpen && selectedOrder && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
-          <div className={`rounded-3xl w-full max-w-sm overflow-hidden ${glassPanel} border-white/20 shadow-2xl`}>
+          <div className={`rounded-3xl w-full max-w-sm overflow-hidden ${glassPanel} border-white/20 shadow-2xl text-white`}>
             <div className="bg-white/10 border-b border-white/10 p-5 flex justify-between items-center">
               <h2 className="font-bold text-lg">📸 Bukti Sampai</h2>
               <button onClick={() => setIsPhotoModalOpen(false)} className="opacity-70 hover:opacity-100 text-2xl">×</button>
             </div>
             <form onSubmit={kirimBuktiSelesai} className="p-6 text-center">
-              <p className={`mb-6 text-sm ${textMuted}`}>Upload foto tiba di lokasi <strong>{selectedOrder.customer_name}</strong></p>
+              <p className={`mb-6 text-sm text-gray-300`}>Upload foto tiba di lokasi <strong>{selectedOrder.customer_name}</strong></p>
               
               {livePreviewUrl ? (
                 <div className="mb-6 w-full aspect-square bg-black/20 rounded-2xl overflow-hidden border border-white/20 flex items-center justify-center relative group">

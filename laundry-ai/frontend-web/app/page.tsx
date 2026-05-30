@@ -206,24 +206,32 @@ export default function Dashboard() {
   async function handleTambahPesanan(e: React.FormEvent) {
     e.preventDefault();
     setIsSubmitting(true);
-    // Catatan: Tipe layanan dan Total Harga sementara dihitung di layar kasir saja, 
-    // jika ingin disimpan permanen di database, perlu ditambah kolomnya di Supabase.
+    
     const { error } = await supabase.from("orders").insert([
       { 
         customer_name: formData.customer_name, 
         alamat_detail: formData.alamat_detail, 
         jarak_ke_toko_km: Number(formData.jarak_ke_toko_km), 
         berat_pesanan_kg: Number(formData.berat_pesanan_kg), 
-        latitude: formData.latitude ? Number(formData.latitude) : 0, 
-        longitude: formData.longitude ? Number(formData.longitude) : 0, 
+        latitude: formData.latitude ? Number(formData.latitude) : null, 
+        longitude: formData.longitude ? Number(formData.longitude) : null, 
+        tipe_layanan: formData.tipe_layanan,
+        harga_per_unit: Number(formData.harga_per_unit),
+        total_harga: formData.total_harga,
         status_logistik: "pickup" 
       }
     ]);
+    
     setIsSubmitting(false);
-    if (error) alert("Gagal: " + error.message);
-    else { 
+    
+    if (error) {
+      alert("Gagal: " + error.message);
+    } else { 
       setIsModalOpen(false); 
-      setFormData({ customer_name: "", alamat_detail: "", jarak_ke_toko_km: "", berat_pesanan_kg: "", latitude: "", longitude: "", tipe_layanan: "kiloan", harga_per_unit: "7000", total_harga: 0 }); 
+      setFormData({ 
+        customer_name: "", alamat_detail: "", jarak_ke_toko_km: "", berat_pesanan_kg: "", 
+        latitude: "", longitude: "", tipe_layanan: "kiloan", harga_per_unit: "7000", total_harga: 0 
+      }); 
       ambilData(); 
     }
   }

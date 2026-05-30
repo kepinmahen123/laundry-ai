@@ -253,7 +253,7 @@ export default function Dashboard() {
 -----------------------------------------
 💰 *TOTAL BAYAR: Rp ${formData.total_harga.toLocaleString('id-ID')}*
 -----------------------------------------
-🙏 _Terima kasih! Kurir kami akan segera meluncur untuk menjemput cucian Anda._`;
+🙏 _Terima kasih sudah mempercayakan LaundryAI kami sebagai tempat laundry anda._`;
 
       // 4. Tembakkan Nota ke Telegram
       await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {

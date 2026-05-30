@@ -261,7 +261,8 @@ export default function Dashboard() {
   async function handleTambahPesanan(e: React.FormEvent) {
     e.preventDefault();
     
-    if (!paymentPhoto) {
+    // GUARDRAIL BARU: Hanya wajib foto jika BUKAN status "Belum Bayar"
+    if (formData.status_pembayaran !== "Belum Bayar" && !paymentPhoto) {
       alert("⚠️ Harap unggah foto bukti transaksi pembayaran (Transfer/QRIS/Cash) terlebih dahulu!");
       return;
     }
@@ -330,7 +331,7 @@ export default function Dashboard() {
       const teksRincian = listRincian.length > 0 ? `\n\n📝 *Rincian Pakaian:*\n${listRincian.join("\n")}` : "";
       const orderId = newOrderData && newOrderData[0] ? newOrderData[0].id : "BARU";
 
-      const notaDigital = `🧾 *NOTA & BUKTI PEMBAYARAN (#${orderId})* 🧾
+      const notaDigital = `🧾 *NOTA ${formData.status_pembayaran !== 'Belum Bayar' ? '& BUKTI PEMBAYARAN ' : 'PESANAN '}(#${orderId})* 🧾
 -----------------------------------------
 👤 *Pelanggan:* ${formData.customer_name}
 🏷️ *Layanan:* ${formData.tipe_layanan.toUpperCase()}
@@ -341,17 +342,27 @@ export default function Dashboard() {
 ⚖️ *Berat / Qty:* ${formData.berat_pesanan_kg} ${formData.tipe_layanan === 'satuan' ? 'Pcs' : 'KG'}
 💵 *Harga per ${formData.tipe_layanan === 'satuan' ? 'Pcs' : 'KG'}:* Rp ${Number(formData.harga_per_unit).toLocaleString('id-ID')}${teksRincian}
 -----------------------------------------
-💰 *TOTAL PENDAPATAN: Rp ${formData.total_harga.toLocaleString('id-ID')}*
+💰 *TOTAL TAGIHAN: Rp ${formData.total_harga.toLocaleString('id-ID')}*
 -----------------------------------------
 🙏 _Terima kasih sudah mempercayakan kami sebagai tempat laundry anda...._`;
 
-      const telegramFormData = new FormData();
-      telegramFormData.append("chat_id", chatId); 
-      telegramFormData.append("photo", paymentPhoto); 
-      telegramFormData.append("caption", notaDigital); 
-      telegramFormData.append("parse_mode", "Markdown");
-
-      await fetch(`https://api.telegram.org/bot${telegramToken}/sendPhoto`, { method: "POST", body: telegramFormData });
+      // LOGIKA PENGIRIMAN TELEGRAM DINAMIS
+      if (formData.status_pembayaran !== "Belum Bayar" && paymentPhoto) {
+        // Kirim nota beserta gambar bukti bayar
+        const telegramFormData = new FormData();
+        telegramFormData.append("chat_id", chatId); 
+        telegramFormData.append("photo", paymentPhoto); 
+        telegramFormData.append("caption", notaDigital); 
+        telegramFormData.append("parse_mode", "Markdown");
+        await fetch(`https://api.telegram.org/bot${telegramToken}/sendPhoto`, { method: "POST", body: telegramFormData });
+      } else {
+        // Jika Belum Bayar, kirim teks nota saja
+        await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id: chatId, text: notaDigital, parse_mode: "Markdown" })
+        });
+      }
 
       setIsModalOpen(false); 
       setFormData({ 
@@ -698,7 +709,7 @@ export default function Dashboard() {
                                   </button>
                                 </div>
                               ) : col === "Siap Kirim" ? (
-                                <button onClick={(e) => { e.stopPropagation(); bukaModalFoto(item.id, item.customer_name); }} className="w-full bg-gradient-to-r from-emerald-600 to-green-600 text-white py-2.5 rounded-lg text-xs font-bold border border-white/20 shadow">📸 Selesaikan & Upload Bukti</button>
+                                <button onClick={(e) => { e.stopPropagation(); bukaModalFoto(item.id, item.customer_name); }} className="w-full bg-gradient-to-r from-emerald-600 to-green-600 text-white py-2.5 rounded-lg text-xs font-bold transition-all shadow-lg border border-white/20">📸 Selesaikan & Upload Bukti</button>
                               ) : col === "selesai" ? (
                                 <button onClick={(e) => { e.stopPropagation(); lihatFotoBukti(item.id); }} className="w-full py-2 rounded-lg text-xs font-bold transition-all bg-white/5 border border-white/10 hover:bg-white/10">👁️ Cek Bukti Selesai</button>
                               ) : null}
@@ -834,20 +845,27 @@ export default function Dashboard() {
                 <span className="text-2xl font-black text-emerald-400">Rp {formData.total_harga.toLocaleString("id-ID")}</span>
               </div>
 
-              <div className="border border-emerald-500/30 bg-emerald-900/10 rounded-2xl p-4">
-                <label className="block text-sm font-bold mb-3 text-emerald-300">📸 Lampirkan Bukti Transaksi POS</label>
-                {paymentPreviewUrl ? (
-                  <div className="w-full h-32 bg-black/20 rounded-xl overflow-hidden border border-white/20 relative">
-                    <img src={paymentPreviewUrl} alt="Preview" className="w-full h-full object-cover" />
-                    <input type="file" accept="image/*" capture="environment" onChange={handlePilihFotoPembayaran} className="absolute inset-0 opacity-0 cursor-pointer" />
-                  </div>
-                ) : (
-                  <div className="w-full h-20 bg-white/5 rounded-xl border-2 border-dashed border-emerald-500/30 flex flex-col items-center justify-center text-emerald-400 hover:bg-emerald-500/10 relative cursor-pointer">
-                    <span className="font-bold text-xs">📷 Upload Foto Bukti Transfer / QRIS / Cash</span>
-                    <input type="file" accept="image/*" capture="environment" required onChange={handlePilihFotoPembayaran} className="absolute inset-0 opacity-0 cursor-pointer" />
-                  </div>
-                )}
-              </div>
+              {/* LOGIKA UPLOAD KAMERA DIKONDISIKAN BERDASARKAN STATUS PEMBAYARAN */}
+              {formData.status_pembayaran !== "Belum Bayar" ? (
+                <div className="border border-emerald-500/30 bg-emerald-900/10 rounded-2xl p-4">
+                  <label className="block text-sm font-bold mb-3 text-emerald-300">📸 Lampirkan Bukti Transaksi POS</label>
+                  {paymentPreviewUrl ? (
+                    <div className="w-full h-32 bg-black/20 rounded-xl overflow-hidden border border-white/20 relative">
+                      <img src={paymentPreviewUrl} alt="Preview" className="w-full h-full object-cover" />
+                      <input type="file" accept="image/*" capture="environment" onChange={handlePilihFotoPembayaran} className="absolute inset-0 opacity-0 cursor-pointer" />
+                    </div>
+                  ) : (
+                    <div className="w-full h-20 bg-white/5 rounded-xl border-2 border-dashed border-emerald-500/30 flex flex-col items-center justify-center text-emerald-400 hover:bg-emerald-500/10 relative cursor-pointer">
+                      <span className="font-bold text-xs">📷 Upload Foto Bukti Transfer / QRIS / Cash</span>
+                      <input type="file" accept="image/*" capture="environment" required onChange={handlePilihFotoPembayaran} className="absolute inset-0 opacity-0 cursor-pointer" />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="border border-amber-500/30 bg-amber-900/10 rounded-2xl p-4 text-center">
+                  <span className="text-amber-400 font-bold text-xs leading-relaxed block">⚠️ Pesanan berstatus BELUM BAYAR.<br/>Fitur lampiran wajib bukti transaksi dinonaktifkan sementara.</span>
+                </div>
+              )}
 
               <div className="pt-2 flex gap-3 pb-2">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 font-bold py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10">Batal</button>

@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from "@react-google-maps/api";
 
 // KONFIGURASI SUPABASE & TELEGRAM
@@ -32,6 +33,30 @@ export default function Dashboard() {
     const d = new Date();
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }); 
+
+  export default function Page() {
+  // 👇 TARUH KODE LOGIKA DI SINI (Sebelum tulisan return) 👇
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [uploadedPhoto, setUploadedPhoto] = useState<string | null>(null);
+  const [completionDate, setCompletionDate] = useState<string | null>(null);
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      
+      reader.onloadend = () => {
+        setUploadedPhoto(reader.result as string);
+        const sekarang = new Date();
+        const opsiOtomatis: Intl.DateTimeFormatOptions = {
+          year: 'numeric', month: 'long', day: 'numeric',
+          hour: '2-digit', minute: '2-digit', second: '2-digit'
+        };
+        setCompletionDate(sekarang.toLocaleDateString('id-ID', opsiOtomatis) + ' WIB');
+      };
+      reader.readAsDataURL(file);
+    }
+  };
   
   const router = useRouter();
 
@@ -622,6 +647,19 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      return (
+    <div className="min-h-screen bg-slate-950 text-white flex relative overflow-x-hidden">
+      
+      {/* Tombol Hamburger */}
+      <button onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
+        {/* ... (isi kode layout panjang yang saya berikan sebelumnya) ... */}
+      </button>
+
+      {/* ... sisa kode UI ... */}
+
+    </div>
+  );
 
       {/* KAMERA BUKTI PENGIRIMAN */}
       {isPhotoModalOpen && selectedOrder && (

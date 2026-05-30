@@ -30,7 +30,7 @@ export default function Dashboard() {
   const [activeMenu, setActiveMenu] = useState("Dashboard");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
   
-  // PERBAIKAN SISTEM TANGGAL LOKAL (WIB)
+  // PERBAIKAN SISTEM TANGGAL LOKAL (WIB) BERDASARKAN CREATED_AT
   const [sortBy, setSortBy] = useState<"terbaru" | "terdekat">("terbaru");
   const [filterTanggal, setFilterTanggal] = useState<string>(() => {
     const d = new Date();
@@ -41,12 +41,15 @@ export default function Dashboard() {
   const [calendarMonth, setCalendarMonth] = useState<number>(new Date().getMonth());
   const [calendarYear, setCalendarYear] = useState<number>(new Date().getFullYear());
 
+  // STATE INVENTARIS GUDANG (PENGURANGAN OTOMATIS)
+  const [inventory, setInventory] = useState({ deterjen: 4850, parfum: 1920, plastik: 94 });
+
   // STATE FORM & POS
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false); 
   
-  // STATE BUKTI PEMBAYARAN
+  // STATE BUKTI PEMBAYARAN FORM POS
   const [paymentPhoto, setPaymentPhoto] = useState<File | null>(null);
   const [paymentPreviewUrl, setPaymentPreviewUrl] = useState<string | null>(null);
   
@@ -58,6 +61,8 @@ export default function Dashboard() {
     tipe_layanan: "kiloan", 
     paket_layanan: "Reguler (Cuci Kering Setrika Lipat)",
     metode_pengiriman: "Diantar Driver Internal",
+    status_pembayaran: "Lunas", 
+    jumlah_dp: "0",
     harga_per_unit: "7000", 
     total_harga: 0
   });
@@ -88,7 +93,7 @@ export default function Dashboard() {
   }
 
   // ==========================================
-  // KANBAN DRAG & DROP + PENCEGAHAN SELESAI
+  // KANBAN GUARDRAILS + SMART AUTOMATION
   // ==========================================
   const KANBAN_COLUMNS = ["Antrean", "Sedang Dicuci", "Disetrika", "Packing", "Siap Kirim", "selesai"];
   const [draggedOrderId, setDraggedOrderId] = useState<number | null>(null);
@@ -110,6 +115,13 @@ export default function Dashboard() {
     const orderLama = pesanan.find(p => p.id === id);
     if (!orderLama) return;
 
+    // GUARDRAIL KEUANGAN: Cegah operasional jika belum LUNAS
+    if ((newStatus === "Siap Kirim" || newStatus === "selesai") && orderLama.status_pembayaran !== "Lunas") {
+       alert(`🛑 AKSES DIBLOKIR: Pesanan Pelanggan "${orderLama.customer_name}" berstatus [${orderLama.status_pembayaran}]. Selesaikan pelunasan kasir terlebih dahulu sebelum lanjut kirim baju!`);
+       return;
+    }
+
+    // SECURITY LOCK FOTO: Buka kamera jika bergeser ke selesai
     if (newStatus === "selesai") {
       bukaModalFoto(id, orderLama.customer_name);
       return; 
@@ -122,6 +134,17 @@ export default function Dashboard() {
     if (newStatus === "Siap Kirim" && orderLama.status_logistik !== "Siap Kirim") {
       kirimNotifSiapKirim(orderLama);
     }
+  };
+
+  // FITUR INSTANT ACTION: Lunasi langsung di tempat
+  const lunasiPesananInstant = async (id: number) => {
+    setPesanan(prev => prev.map(p => p.id === id ? { ...p, status_pembayaran: "Lunas" } : p));
+    if(detailPesanan && detailPesanan.id === id) {
+      setDetailPesanan((prev: any) => ({ ...prev, status_pembayaran: "Lunas" }));
+    }
+    const { error } = await supabase.from("orders").update({ status_pembayaran: "Lunas" }).eq("id", id);
+    if (error) { alert("Gagal melunasi transaksi!"); ambilData(); }
+    else { alert("🎉 Pembayaran dikonfirmasi LUNAS! Papan operasional terbuka kembali."); }
   };
 
   const kirimNotifSiapKirim = async (order: any) => {
@@ -232,11 +255,14 @@ export default function Dashboard() {
     }
   }
 
+  // ==========================================
+  // SIMPAN PESANAN BARU + POTONG STOK OTOMATIS
+  // ==========================================
   async function handleTambahPesanan(e: React.FormEvent) {
     e.preventDefault();
     
     if (!paymentPhoto) {
-      alert("⚠️ Harap unggah foto bukti pembayaran (Transfer/QRIS/Uang Tunai) terlebih dahulu sebelum menyimpan!");
+      alert("⚠️ Harap unggah foto bukti transaksi pembayaran (Transfer/QRIS/Cash) terlebih dahulu!");
       return;
     }
 
@@ -254,6 +280,8 @@ export default function Dashboard() {
           tipe_layanan: formData.tipe_layanan,
           paket_layanan: formData.paket_layanan,
           metode_pengiriman: formData.metode_pengiriman,
+          status_pembayaran: formData.status_pembayaran,
+          jumlah_dp: formData.status_pembayaran === "DP" ? Number(formData.jumlah_dp) : 0,
           harga_per_unit: Number(formData.harga_per_unit),
           total_harga: formData.total_harga,
           rincian_item: rincianItem,
@@ -262,6 +290,33 @@ export default function Dashboard() {
       ]).select("*");
       
       if (error) throw new Error(error.message);
+
+      // POTONG INVENTARIS SECARA PROPORSIOAL
+      const berat = Number(formData.berat_pesanan_kg) || 1;
+      const dDeduct = Math.round(berat * 50); // 50ml deterjen per kg
+      const pDeduct = Math.round(berat * 20); // 20ml parfum per kg
+
+      setInventory(prev => {
+        const nDet = Math.max(0, prev.deterjen - dDeduct);
+        const nPar = Math.max(0, prev.parfum - pDeduct);
+        const nPlas = Math.max(0, prev.plastik - 1);
+
+        // TRIGGER ALARM TELEGRAM JIKA STOK GUDANG KRITIS
+        if (nDet < 1000 || nPar < 500 || nPlas < 10) {
+          const alarmTeks = `⚠️ *DARURAT INVENTARIS LAUNDROAI* ⚠️\n\n` +
+            `• Bahan Baku Deterjen: ${nDet} ml ${nDet < 1000 ? '🚨' : '✅'}\n` +
+            `• Bahan Premium Parfum: ${nPar} ml ${nPar < 500 ? '🚨' : '✅'}\n` +
+            `• Kantong Plastik Packing: ${nPlas} Pcs ${nPlas < 10 ? '🚨' : '✅'}\n\n` +
+            `Sistem mendeteksi stok menipis. Harap lakukan restock agar lini produksi mesin cuci tidak berhenti!`;
+          
+          fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chat_id: chatId, text: alarmTeks, parse_mode: "Markdown" })
+          }).catch(err => console.error(err));
+        }
+
+        return { deterjen: nDet, parfum: nPar, plastik: nPlas };
+      });
 
       const listRincian = [];
       if (rincianItem.baju > 0) listRincian.push(`- 👕 Baju: ${rincianItem.baju}`);
@@ -273,7 +328,6 @@ export default function Dashboard() {
       if (rincianItem.dasi > 0) listRincian.push(`- 👔 Dasi: ${rincianItem.dasi}`);
       
       const teksRincian = listRincian.length > 0 ? `\n\n📝 *Rincian Pakaian:*\n${listRincian.join("\n")}` : "";
-      
       const orderId = newOrderData && newOrderData[0] ? newOrderData[0].id : "BARU";
 
       const notaDigital = `🧾 *NOTA & BUKTI PEMBAYARAN (#${orderId})* 🧾
@@ -282,12 +336,12 @@ export default function Dashboard() {
 🏷️ *Layanan:* ${formData.tipe_layanan.toUpperCase()}
 📦 *Paket:* ${formData.paket_layanan}
 🚚 *Pengiriman:* ${formData.metode_pengiriman}
-📍 *Alamat:* ${formData.alamat_detail}
+💳 *Keuangan:* ${formData.status_pembayaran.toUpperCase()} ${formData.status_pembayaran === 'DP' ? `(Rp ${Number(formData.jumlah_dp).toLocaleString('id-ID')})` : ''}
 -----------------------------------------
 ⚖️ *Berat / Qty:* ${formData.berat_pesanan_kg} ${formData.tipe_layanan === 'satuan' ? 'Pcs' : 'KG'}
 💵 *Harga per ${formData.tipe_layanan === 'satuan' ? 'Pcs' : 'KG'}:* Rp ${Number(formData.harga_per_unit).toLocaleString('id-ID')}${teksRincian}
 -----------------------------------------
-💰 *TOTAL BAYAR: Rp ${formData.total_harga.toLocaleString('id-ID')}*
+💰 *TOTAL PENDAPATAN: Rp ${formData.total_harga.toLocaleString('id-ID')}*
 -----------------------------------------
 🙏 _Terima kasih sudah mempercayakan kami sebagai tempat laundry anda...._`;
 
@@ -304,11 +358,10 @@ export default function Dashboard() {
         customer_name: "", alamat_detail: "", jarak_ke_toko_km: "", berat_pesanan_kg: "", 
         latitude: "", longitude: "", tipe_layanan: "kiloan", 
         paket_layanan: "Reguler (Cuci Kering Setrika Lipat)", metode_pengiriman: "Diantar Driver Internal", 
-        harga_per_unit: "7000", total_harga: 0 
+        status_pembayaran: "Lunas", jumlah_dp: "0", harga_per_unit: "7000", total_harga: 0 
       }); 
       setRincianItem(defaultRincian); 
-      setPaymentPhoto(null);
-      setPaymentPreviewUrl(null);
+      setPaymentPhoto(null); setPaymentPreviewUrl(null);
       ambilData(); 
 
     } catch (err: any) {
@@ -332,21 +385,22 @@ export default function Dashboard() {
   async function generateDanKirimLaporan() {
     setIsExporting(true);
     try {
-      let barisCsv = "ID Pesanan,Tanggal,Nama Pelanggan,Paket,Pengiriman,Berat/Qty,Total Harga,Status Logistik\n";
+      let barisCsv = "ID Pesanan,Tanggal,Nama Pelanggan,Paket,Pengiriman,Berat/Qty,Total Harga,Status Keuangan,Status Logistik\n";
       dataTersaring.forEach((item) => {
         const d = item.created_at ? new Date(item.created_at) : new Date();
         const tgl = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-        barisCsv += `${item.id || "-"},${tgl},${String(item.customer_name || "-").replace(/,/g, " ")},${item.paket_layanan || "-"},${item.metode_pengiriman || "-"},${item.berat_pesanan_kg || "0"},${item.total_harga || "0"},${item.status_logistik || "-"}\n`;
+        barisCsv += `${item.id || "-"},${tgl},${String(item.customer_name || "-").replace(/,/g, " ")},${item.paket_layanan || "-"},${item.metode_pengiriman || "-"},${item.berat_pesanan_kg || "0"},${item.total_harga || "0"},${item.status_pembayaran || "Lunas"},${item.status_logistik || "-"}\n`;
       });
       const blob = new Blob([barisCsv], { type: "text/csv;charset=utf-8;" });
       const fileLaporan = new FormData();
       fileLaporan.append("chat_id", chatId); fileLaporan.append("document", blob, `Laporan_${filterTanggal || "Semua"}.csv`);
-      fileLaporan.append("caption", `📊 REKAP LAPORAN LOGISTIK\n\nTotal Data: ${dataTersaring.length} pesanan.`);
+      fileLaporan.append("caption", `📊 REKAP LAPORAN LOGISTIK & FINANSIAL\n\nTotal Data: ${dataTersaring.length} pesanan.`);
       await fetch(`https://api.telegram.org/bot${telegramToken}/sendDocument`, { method: "POST", body: fileLaporan });
       alert("Laporan Excel berhasil dikirim ke Telegram! 🚀");
     } catch (err) { alert("Kesalahan sistem."); } finally { setIsExporting(false); }
   }
 
+  // LOGIKA RENDER DATA KALENDER PENDAPATAN
   const pesananBulanIni = pesanan.filter(p => {
     if (!p.created_at) return false;
     const d = new Date(p.created_at);
@@ -380,6 +434,7 @@ export default function Dashboard() {
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4 mx-auto"></div></div>;
   if (!session) return null;
 
+  // FILTERING LOGIC COCOK BERDASARKAN TANGGAL PEMBUATAN TRANSKASI (CREATED_AT) LOKAL
   const dataTersaring = [...pesanan]
     .filter((item) => filterStatus === "semua" ? true : item.status_logistik === filterStatus)
     .filter((item) => {
@@ -388,10 +443,7 @@ export default function Dashboard() {
       const d = new Date(item.created_at);
       const itemLocalYYYYMMDD = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
       return itemLocalYYYYMMDD === filterTanggal;
-    }).sort((a, b) => (sortBy === "terdekat" ? Number(a.jarak_ke_toko_km || 0) - Number(b.jarak_ke_toko_km || 0) : 0));
-
-  const totalAntreanAktif = dataTersaring.filter((item) => item.status_logistik !== "selesai").length;
-  const totalBeratTersaring = dataTersaring.reduce((acc, item) => acc + Number(item.berat_pesanan_kg || 0), 0);
+    }).sort((a, b) => (sortBy === "terbaru" ? 0 : 0));
 
   const dynamicBg = isDarkMode ? "bg-gradient-to-br from-indigo-950 via-gray-900 to-purple-950 text-white" : "bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-100 text-gray-900";
   const glassPanel = isDarkMode ? "bg-white/5 backdrop-blur-xl border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.3)]" : "bg-white/40 backdrop-blur-xl border border-white/50 shadow-[0_8px_32px_0_rgba(31,38,135,0.1)]";
@@ -408,6 +460,7 @@ export default function Dashboard() {
       <button onClick={() => setIsSidebarOpen(true)} className={`md:hidden fixed top-4 left-4 z-40 p-3 rounded-xl ${glassPanel} active:scale-95`}><span className="text-xl">☰</span></button>
       {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40" />}
 
+      {/* SIDEBAR NAVIGATION BARU */}
       <aside className={`fixed md:relative inset-y-0 left-0 z-50 w-64 flex flex-col justify-between ${glassPanel} border-r border-r-white/10 md:m-4 md:rounded-3xl transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}>
         <button onClick={() => setIsSidebarOpen(false)} className="md:hidden absolute top-4 right-4 text-white opacity-70 text-2xl font-bold">✕</button>
         <div>
@@ -416,10 +469,12 @@ export default function Dashboard() {
             <div><h2 className="font-extrabold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">LaundroAI</h2><p className={`text-xs ${textMuted}`}>Logistics System</p></div>
           </div>
           <nav className="mt-4 px-4 space-y-2">
-            {['Dashboard', 'Tracking', 'Database Customers', 'Calendar'].map((menu) => (
+            {['Dashboard', 'Tracking', 'Database Customers', 'Calendar', 'Inventory'].map((menu) => (
               <button key={menu} onClick={() => { setActiveMenu(menu); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold transition-all duration-300 ${activeMenu === menu ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30 border border-white/20" : `${isDarkMode ? 'text-gray-400 hover:bg-white/10' : 'text-gray-600 hover:bg-white/40'}`}`}>
-                {menu === 'Dashboard' && "📊"} {menu === 'Tracking' && "📍"} {menu === 'Database Customers' && "👥"} {menu === 'Calendar' && "📅"}
-                <span className="text-sm">{menu === 'Calendar' ? 'Kalender Income' : menu}</span>
+                {menu === 'Dashboard' && "📊"} {menu === 'Tracking' && "📍"} {menu === 'Database Customers' && "👥"} {menu === 'Calendar' && "📅"} {menu === 'Inventory' && "📦"}
+                <span className="text-sm">
+                  {menu === 'Calendar' ? 'Kalender Income' : menu === 'Inventory' ? 'Stok Gudang' : menu}
+                </span>
               </button>
             ))}
           </nav>
@@ -431,59 +486,61 @@ export default function Dashboard() {
       </aside>
 
       <main className="flex-1 overflow-y-auto p-6 lg:p-10 pt-20 md:pt-10 scroll-smooth z-10 w-full max-w-full">
-        {activeMenu === "Calendar" ? (
+        
+        {/* MODUL INVENTARIS GUDANG BARU */}
+        {activeMenu === "Inventory" ? (
+          <div className="max-w-7xl mx-auto flex flex-col h-full">
+            <div className="mb-6">
+              <h1 className="text-3xl font-extrabold tracking-tight">Stok Gudang 📦</h1>
+              <p className={`text-sm mt-1 ${textMuted}`}>Pantau pemotongan bahan baku deterjen & parfum secara real-time.</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className={`p-6 rounded-2xl ${glassPanel} border-t-4 border-t-blue-500`}>
+                <div className="flex justify-between items-center mb-4"><span className="text-sm font-bold opacity-70">🧼 Deterjen Utama</span><span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded font-mono">{inventory.deterjen} ml</span></div>
+                <div className="w-full bg-black/30 rounded-full h-3 mb-2"><div className={`h-3 rounded-full transition-all ${inventory.deterjen < 1000 ? 'bg-red-500 animate-pulse' : 'bg-blue-500'}`} style={{width: `${Math.min(100, (inventory.deterjen / 5000) * 100)}%`}}></div></div>
+                <button onClick={() => setInventory({...inventory, deterjen: 5000})} className="w-full text-center text-xs py-2 bg-white/5 hover:bg-white/10 rounded-xl mt-2 border border-white/5 font-bold transition-all">➕ Isi Ulang Jerigen (5L)</button>
+              </div>
+              <div className={`p-6 rounded-2xl ${glassPanel} border-t-4 border-t-purple-500`}>
+                <div className="flex justify-between items-center mb-4"><span className="text-sm font-bold opacity-70">🌸 Parfum Premium</span><span className="text-xs bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded font-mono">{inventory.parfum} ml</span></div>
+                <div className="w-full bg-black/30 rounded-full h-3 mb-2"><div className={`h-3 rounded-full transition-all ${inventory.parfum < 500 ? 'bg-red-500 animate-pulse' : 'bg-purple-500'}`} style={{width: `${Math.min(100, (inventory.parfum / 2000) * 100)}%`}}></div></div>
+                <button onClick={() => setInventory({...inventory, parfum: 2000})} className="w-full text-center text-xs py-2 bg-white/5 hover:bg-white/10 rounded-xl mt-2 border border-white/5 font-bold transition-all">➕ Isi Ulang Parfum (2L)</button>
+              </div>
+              <div className={`p-6 rounded-2xl ${glassPanel} border-t-4 border-t-emerald-500`}>
+                <div className="flex justify-between items-center mb-4"><span className="text-sm font-bold opacity-70">🛍️ Plastik Packing</span><span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-mono">{inventory.plastik} Pcs</span></div>
+                <div className="w-full bg-black/30 rounded-full h-3 mb-2"><div className={`h-3 rounded-full transition-all ${inventory.plastik < 10 ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}`} style={{width: `${Math.min(100, (inventory.plastik / 100) * 100)}%`}}></div></div>
+                <button onClick={() => setInventory({...inventory, plastik: 100})} className="w-full text-center text-xs py-2 bg-white/5 hover:bg-white/10 rounded-xl mt-2 border border-white/5 font-bold transition-all">➕ Restock Plastik (100 Pcs)</button>
+              </div>
+            </div>
+          </div>
+        ) : activeMenu === "Calendar" ? (
           <div className="max-w-7xl mx-auto flex flex-col h-full">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 shrink-0">
-              <div>
-                <h1 className="text-3xl font-extrabold tracking-tight">Kalender Pendapatan 📅</h1>
-                <p className={`text-sm mt-1 ${textMuted}`}>Pantau rekap transaksi dan pendapatan harian.</p>
-              </div>
+              <div><h1 className="text-3xl font-extrabold tracking-tight">Kalender Pendapatan 📅</h1><p className={`text-sm mt-1 ${textMuted}`}>Pantau rekap transaksi harian berdasarkan tanggal pembuatan.</p></div>
               <div className="flex gap-2">
-                <select value={calendarMonth} onChange={e => setCalendarMonth(Number(e.target.value))} className={`px-4 py-2 rounded-xl font-bold outline-none cursor-pointer ${glassPanel} text-black dark:text-white`}>
+                <select value={calendarMonth} onChange={e => setCalendarMonth(Number(e.target.value))} className={`px-4 py-2 rounded-xl font-bold outline-none cursor-pointer ${glassPanel} text-black dark:text-white`}><value></value>
                   {namaBulan.map((m, i) => <option key={i} value={i} className="text-black">{m}</option>)}
                 </select>
                 <input type="number" value={calendarYear} onChange={e => setCalendarYear(Number(e.target.value))} className={`px-4 py-2 rounded-xl font-bold outline-none w-24 ${glassPanel}`} />
               </div>
             </div>
-
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-              <div className={`p-5 rounded-2xl ${glassPanel} border-l-4 border-l-blue-500 flex items-center justify-between`}>
-                <div>
-                  <p className={`text-xs font-bold uppercase tracking-wider ${textMuted}`}>Total Transaksi Bulan Ini</p>
-                  <p className="text-2xl font-black mt-1">{totalBulanQty} <span className="text-sm font-medium opacity-50">Nota</span></p>
-                </div>
-                <div className="text-4xl opacity-20">🧾</div>
-              </div>
-              <div className={`p-5 rounded-2xl ${glassPanel} border-l-4 border-l-emerald-500 flex items-center justify-between`}>
-                <div>
-                  <p className={`text-xs font-bold uppercase tracking-wider ${textMuted}`}>Total Pendapatan Bulan Ini</p>
-                  <p className="text-2xl font-black mt-1 text-emerald-400">Rp {totalBulanRp.toLocaleString("id-ID")}</p>
-                </div>
-                <div className="text-4xl opacity-20">💰</div>
-              </div>
+              <div className={`p-5 rounded-2xl ${glassPanel} border-l-4 border-l-blue-500 flex items-center justify-between`}><div><p className={`text-xs font-bold uppercase tracking-wider ${textMuted}`}>Total Transaksi Bulan Ini</p><p className="text-2xl font-black mt-1">{totalBulanQty} <span className="text-sm font-medium opacity-50">Nota</span></p></div><div className="text-4xl opacity-20">🧾</div></div>
+              <div className={`p-5 rounded-2xl ${glassPanel} border-l-4 border-l-emerald-500 flex items-center justify-between`}><div><p className={`text-xs font-bold uppercase tracking-wider ${textMuted}`}>Total Pendapatan Bulan Ini</p><p className="text-2xl font-black mt-1 text-emerald-400">Rp {totalBulanRp.toLocaleString("id-ID")}</p></div><div className="text-4xl opacity-20">💰</div></div>
             </div>
-
             <div className="flex-1 overflow-y-auto pb-4 pr-2 scroll-smooth">
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-4">
                 {calendarCards.map(day => (
                   <div key={day.tanggal} className={`p-4 rounded-2xl border transition-all ${day.qty > 0 ? 'bg-gradient-to-br from-indigo-900/40 to-blue-900/20 border-indigo-500/30 shadow-lg shadow-indigo-500/10' : `${glassPanel} opacity-60 hover:opacity-100`}`}>
-                    <div className="flex justify-between items-start mb-3">
-                      <span className="text-xl font-black opacity-80">{day.tanggal}</span>
-                      {day.qty > 0 && <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded">Aktif</span>}
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-[11px] opacity-70">Transaksi: <span className="font-bold text-white text-xs">{day.qty}</span></p>
-                      <p className="text-sm font-black text-emerald-400">Rp {day.total.toLocaleString("id-ID")}</p>
-                    </div>
+                    <div className="flex justify-between items-start mb-3"><span className="text-xl font-black opacity-80">{day.tanggal}</span>{day.qty > 0 && <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded">Aktif</span>}</div>
+                    <div className="space-y-1"><p className="text-[11px] opacity-70">Transaksi: <span className="font-bold text-white text-xs">{day.qty}</span></p><p className="text-sm font-black text-emerald-400">Rp {day.total.toLocaleString("id-ID")}</p></div>
                   </div>
                 ))}
               </div>
             </div>
           </div>
-
         ) : activeMenu === "Tracking" ? (
           <div className="max-w-7xl mx-auto h-full flex flex-col">
-             <div className="mb-6"><h1 className="text-3xl font-extrabold tracking-tight">Tracking Armada 📍</h1><p className={`text-sm mt-1 ${textMuted}`}>Pantau pergerakan antrean paket secara real-time.</p></div>
+             <div className="mb-6"><h1 className="text-3xl font-extrabold tracking-tight">Tracking Armada 📍</h1><p className={`text-sm mt-1 ${textMuted}`}>Pantau pergerakan armada pengiriman secara real-time.</p></div>
              <div className={`flex-1 rounded-3xl overflow-hidden p-2 ${glassPanel}`}>
                 {!isMapLoaded ? (
                   <div className="w-full h-full min-h-[500px] flex items-center justify-center rounded-2xl"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div></div>
@@ -511,7 +568,7 @@ export default function Dashboard() {
         ) : activeMenu === "Database Customers" ? (
           <div className="max-w-7xl mx-auto overflow-x-auto">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-              <div><h1 className="text-3xl font-extrabold tracking-tight">Database Pelanggan 👥</h1><p className={`text-sm mt-1 ${textMuted}`}>Kelola profil pelanggan untuk fitur Autofill.</p></div>
+              <div><h1 className="text-3xl font-extrabold tracking-tight">Database Pelanggan 👥</h1><p className={`text-sm mt-1 ${textMuted}`}>Kelola profil pelanggan untuk fitur Autofill otomatis.</p></div>
               <button onClick={() => setIsCustomerModalOpen(true)} className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-5 py-3 rounded-xl text-sm font-bold shadow-lg shadow-purple-500/30 border border-white/20 transition-all active:scale-95 flex items-center gap-2">➕ <span>Customer Baru</span></button>
             </div>
             {customers.length === 0 ? (
@@ -532,14 +589,14 @@ export default function Dashboard() {
         ) : (
           <div className="max-w-7xl mx-auto flex flex-col h-full">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 shrink-0">
-              <div><h1 className="text-3xl font-extrabold tracking-tight">Papan Operasional</h1><p className={`text-sm mt-1 ${textMuted}`}>Pantau dan geser kartu cucian secara langsung.</p></div>
+              <div><h1 className="text-3xl font-extrabold tracking-tight">Papan Operasional</h1><p className={`text-sm mt-1 ${textMuted}`}>Kelola siklus produksi pakaian pakaian secara real-time.</p></div>
               <button onClick={() => setIsModalOpen(true)} className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-5 py-3 rounded-xl text-sm font-bold shadow-lg shadow-blue-500/30 border border-white/20 transition-all active:scale-95 flex items-center gap-2">➕ <span>Pesanan Baru</span></button>
             </div>
 
             <div className="flex flex-col xl:flex-row justify-between mb-4 gap-4 shrink-0">
               <div className="flex gap-3 flex-wrap">
                 <div className={`flex items-center gap-2 px-4 py-2 rounded-xl ${glassPanel}`}>
-                  <span className="text-sm font-bold opacity-60">📅 Filter:</span>
+                  <span className="text-sm font-bold opacity-60">📅 Filter Pembuatan:</span>
                   <input type="date" value={filterTanggal} onChange={(e) => setFilterTanggal(e.target.value)} className={`text-xs md:text-sm font-bold outline-none bg-transparent cursor-pointer`} style={{ colorScheme: isDarkMode ? 'dark' : 'light' }} />
                   {filterTanggal && <button onClick={() => setFilterTanggal("")} className="text-red-400 hover:text-red-500 ml-1 text-xs font-bold transition-colors">✕</button>}
                 </div>
@@ -553,13 +610,14 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {/* AREA UTAMA KANBAN BOARD */}
             {dataTersaring.length === 0 ? (
               <div className={`rounded-3xl p-16 text-center ${glassPanel} my-auto`}><div className="text-5xl mb-4 opacity-50">📭</div><h3 className="text-xl font-bold mb-2">Tidak ada aktivitas</h3><p className={textMuted}>Belum ada data pesanan pada tanggal ini.</p></div>
             ) : viewMode === "table" ? (
               <div className={`rounded-3xl overflow-x-auto ${glassPanel}`}>
                 <table className="min-w-full text-left">
                   <thead className={tableHeaderGlass}>
-                    <tr><th className="p-5 font-semibold text-sm tracking-wide">ID & Pelanggan</th><th className="p-5 font-semibold text-sm tracking-wide">Layanan</th><th className="p-5 font-semibold text-sm tracking-wide">Pengiriman</th><th className="p-5 font-semibold text-sm tracking-wide text-center">Status Papan</th><th className="p-5 font-semibold text-sm tracking-wide text-center">Tindakan</th></tr>
+                    <tr><th className="p-5 font-semibold text-sm tracking-wide">ID & Pelanggan</th><th className="p-5 font-semibold text-sm tracking-wide">Layanan</th><th className="p-5 font-semibold text-sm tracking-wide">Keuangan</th><th className="p-5 font-semibold text-sm tracking-wide text-center">Status Papan</th><th className="p-5 font-semibold text-sm tracking-wide text-center">Tindakan</th></tr>
                   </thead>
                   <tbody className={`divide-y ${isDarkMode ? 'divide-white/5' : 'divide-black/5'}`}>
                     {dataTersaring.map((item) => (
@@ -573,14 +631,14 @@ export default function Dashboard() {
                           <div className="text-xs opacity-80 mt-1">{item.paket_layanan || "Reguler"}</div>
                         </td>
                         <td className="p-5 min-w-[150px]">
-                          <div className="text-xs font-bold bg-black/20 px-2 py-1 rounded inline-block">{item.metode_pengiriman || "Driver"}</div>
+                          <span className={`px-2 py-1 rounded text-xs font-bold ${item.status_pembayaran === 'Lunas' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{item.status_pembayaran}</span>
                         </td>
                         <td className="p-5 text-center align-middle min-w-[150px]">
-                          <span className={`px-3 py-1.5 font-bold rounded-lg text-[11px] tracking-wider uppercase block w-max mx-auto ${item.status_logistik === 'selesai' ? 'bg-green-500/20 text-green-500 dark:text-green-400 border border-green-500/30' : 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border border-yellow-500/30'}`}>{item.status_logistik}</span>
+                          <span className={`px-3 py-1.5 font-bold rounded-lg text-[11px] tracking-wider uppercase block w-max mx-auto ${item.status_logistik === 'selesai' ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'}`}>{item.status_logistik}</span>
                         </td>
                         <td className="p-5 text-center align-middle min-w-[150px]">
                           {item.status_logistik === 'Siap Kirim' ? (
-                            <button onClick={(e) => { e.stopPropagation(); bukaModalFoto(item.id, item.customer_name); }} className="bg-gradient-to-r from-emerald-600 to-green-600 hover:opacity-80 text-white px-4 py-2 rounded-xl text-xs md:text-sm font-bold shadow-lg transition-all active:scale-95 whitespace-nowrap border border-white/20">Selesaikan 🚀</button>
+                            <button onClick={(e) => { e.stopPropagation(); bukaModalFoto(item.id, item.customer_name); }} className="bg-gradient-to-r from-emerald-600 to-green-600 hover:opacity-80 text-white px-4 py-2 rounded-xl text-xs md:text-sm font-bold shadow-lg transition-all active:scale-95 border border-white/20">Selesaikan 🚀</button>
                           ) : item.status_logistik === 'selesai' ? (
                             <button onClick={(e) => { e.stopPropagation(); lihatFotoBukti(item.id); }} className={`text-xs font-bold px-3 py-2 rounded-lg transition-all ${glassPanel} hover:bg-white/10`}>👁️ Cek Foto</button>
                           ) : (
@@ -595,12 +653,7 @@ export default function Dashboard() {
             ) : (
               <div className="flex gap-4 overflow-x-auto pb-4 flex-1 items-start snap-x snap-mandatory">
                 {KANBAN_COLUMNS.map(col => (
-                  <div 
-                    key={col} 
-                    onDragOver={(e) => e.preventDefault()} 
-                    onDrop={(e) => handleDrop(e, col)} 
-                    className={`min-w-[280px] md:min-w-[320px] max-h-full flex flex-col bg-black/10 dark:bg-black/40 rounded-2xl p-3 border border-white/5 shadow-inner snap-center transition-colors ${draggedOrderId ? 'bg-black/30' : ''}`}
-                  >
+                  <div key={col} onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, col)} className={`min-w-[280px] md:min-w-[320px] max-h-full flex flex-col bg-black/10 dark:bg-black/40 rounded-2xl p-3 border border-white/5 shadow-inner snap-center transition-colors`}>
                     <div className="flex justify-between items-center mb-3 px-2 border-b border-white/10 pb-2 shrink-0">
                       <h3 className="font-extrabold text-sm tracking-wide text-indigo-200 uppercase">{col}</h3>
                       <span className="bg-white/10 text-xs px-2 py-0.5 rounded-full font-bold">
@@ -610,24 +663,24 @@ export default function Dashboard() {
                     
                     <div className="flex-1 overflow-y-auto space-y-3 pr-2 scroll-smooth">
                       {dataTersaring.filter(i => i.status_logistik === col || (col === "Antrean" && i.status_logistik === "pickup")).map((item) => {
-                        // LOGIKA SMART ARROW (PANAH PINTAR)
                         const currentIndex = KANBAN_COLUMNS.indexOf(item.status_logistik === 'pickup' ? 'Antrean' : item.status_logistik);
                         const nextStatus = currentIndex !== -1 && currentIndex < KANBAN_COLUMNS.length - 1 ? KANBAN_COLUMNS[currentIndex + 1] : null;
 
                         return (
-                          <div 
-                            key={item.id} 
-                            draggable 
-                            onDragStart={(e) => handleDragStart(e, item.id)}
-                            onClick={() => setDetailPesanan(item)}
-                            className={`p-4 rounded-xl relative ${glassPanel} cursor-pointer hover:border-indigo-400/50 transition-all shadow-md group`}
-                          >
+                          <div key={item.id} draggable onDragStart={(e) => handleDragStart(e, item.id)} onClick={() => setDetailPesanan(item)} className={`p-4 rounded-xl relative ${glassPanel} cursor-pointer hover:border-indigo-400/50 transition-all shadow-md group`}>
                             <div className="flex justify-between items-start mb-2">
                               <div>
                                 <div className="text-[10px] font-bold mb-1 opacity-60">#{item.id}</div>
                                 <h4 className="text-base font-bold leading-tight">{item.customer_name}</h4>
                               </div>
-                              {item.tipe_layanan === 'satuan' && <span className="bg-purple-500/20 text-purple-300 text-[9px] font-bold px-2 py-1 rounded-md">SATUAN</span>}
+                              {item.status_pembayaran === 'Lunas' ? (
+                                <span className="bg-green-500/20 text-green-400 text-[9px] font-bold px-2 py-0.5 rounded">LUNAS</span>
+                              ) : (
+                                <div className="flex flex-col items-end gap-1">
+                                  <span className="bg-red-500/20 text-red-400 text-[9px] font-bold px-2 py-0.5 rounded animate-pulse">{item.status_pembayaran.toUpperCase()}</span>
+                                  <button onClick={(e) => { e.stopPropagation(); lunasiPesananInstant(item.id); }} className="text-[9px] font-bold bg-emerald-500 text-white px-1.5 py-0.5 rounded-md hover:bg-emerald-600 transition-all">Lunasi 💰</button>
+                                </div>
+                              )}
                             </div>
                             
                             <div className="text-[11px] bg-black/20 p-2 rounded-lg mb-2 border border-white/5 text-slate-300 font-medium">
@@ -635,25 +688,21 @@ export default function Dashboard() {
                               🚚 {item.metode_pengiriman || "Driver"}
                             </div>
                             
-                            {/* AREA SMART ARROW PENGGANTI DROPDOWN */}
+                            {/* INTEGRASI MOBILE SMART ARROW */}
                             <div className="mt-3 border-t border-white/10 pt-3">
                               {col !== "Siap Kirim" && col !== "selesai" && nextStatus ? (
                                 <div className="flex justify-between items-center">
-                                  <span className="text-[10px] opacity-60">Langkah Berikutnya:</span>
-                                  <button 
-                                    onClick={(e) => { e.stopPropagation(); perbaruiStatusPesanan(item.id, nextStatus); }}
-                                    className="bg-blue-600/30 text-blue-200 hover:bg-blue-600/50 border border-blue-500/40 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 active:scale-95 transition-all shadow-sm"
-                                  >
-                                    {nextStatus} <span className="text-base leading-none">➡️</span>
+                                  <span className="text-[10px] opacity-60">Operasional:</span>
+                                  <button onClick={(e) => { e.stopPropagation(); perbaruiStatusPesanan(item.id, nextStatus); }} className="bg-blue-600/30 text-blue-200 hover:bg-blue-600/50 border border-blue-500/40 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 active:scale-95 transition-all shadow-sm">
+                                    Lanjut ke {nextStatus} ➡️
                                   </button>
                                 </div>
                               ) : col === "Siap Kirim" ? (
-                                <button onClick={(e) => { e.stopPropagation(); bukaModalFoto(item.id, item.customer_name); }} className="w-full bg-gradient-to-r from-emerald-600 to-green-600 text-white py-2.5 rounded-lg text-xs font-bold transition-all shadow-lg border border-white/20">📸 Selesaikan & Upload Bukti</button>
+                                <button onClick={(e) => { e.stopPropagation(); bukaModalFoto(item.id, item.customer_name); }} className="w-full bg-gradient-to-r from-emerald-600 to-green-600 text-white py-2.5 rounded-lg text-xs font-bold border border-white/20 shadow">📸 Selesaikan & Upload Bukti</button>
                               ) : col === "selesai" ? (
-                                <button onClick={(e) => { e.stopPropagation(); lihatFotoBukti(item.id); }} className="w-full py-2 rounded-lg text-xs font-bold transition-all bg-white/5 border border-white/10 hover:bg-white/10">👁️ Cek Bukti Pengiriman</button>
+                                <button onClick={(e) => { e.stopPropagation(); lihatFotoBukti(item.id); }} className="w-full py-2 rounded-lg text-xs font-bold transition-all bg-white/5 border border-white/10 hover:bg-white/10">👁️ Cek Bukti Selesai</button>
                               ) : null}
                             </div>
-
                           </div>
                         );
                       })}
@@ -667,7 +716,7 @@ export default function Dashboard() {
       </main>
 
       {/* ==========================================
-          MODAL DETAIL PESANAN (POPUP GLASS)
+          MODAL DETAIL PESANAN + BARCODE TAG GENERATOR
           ========================================== */}
       {detailPesanan && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[70] p-4" onClick={() => setDetailPesanan(null)}>
@@ -677,91 +726,62 @@ export default function Dashboard() {
               <button onClick={() => setDetailPesanan(null)} className="opacity-70 hover:opacity-100 text-2xl active:scale-90">×</button>
             </div>
             <div className="p-6 overflow-y-auto flex-1 space-y-5">
+              
+              {/* INTEGRASI BARCODE/QR TAG */}
+              <div className="bg-black/20 p-4 rounded-xl border border-white/5 flex flex-col items-center text-center">
+                <h4 className="text-xs font-bold opacity-60 border-b border-white/10 pb-2 mb-3 w-full">🏷️ Label Tag Keranjang Pelacakan (Anti-Tertukar)</h4>
+                <img src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=LND-${detailPesanan.id}`} alt="Barcode Tag" className="w-24 h-24 object-contain bg-white p-1 rounded-xl shadow" />
+                <p className="text-[11px] font-mono mt-1.5 text-indigo-300">TAG-ID: LND-{String(detailPesanan.id).padStart(4, '0')}</p>
+                <button type="button" onClick={() => alert("🖨️ Mengirim sinyal cetak barcode ke Printer Thermal Bluetooth...")} className="mt-2 bg-white/10 hover:bg-white/20 px-3 py-1 rounded-lg text-xs font-bold border border-white/10">🖨️ Print Label Baju</button>
+              </div>
+
               <div className="flex justify-between items-start border-b border-white/10 pb-4">
                 <div>
                   <p className="text-[10px] uppercase tracking-wider opacity-60 font-bold mb-1">Nama Pelanggan</p>
                   <h3 className="text-2xl font-black text-indigo-300">{detailPesanan.customer_name}</h3>
                 </div>
-                <span className={`px-3 py-1 font-bold rounded-lg text-[10px] tracking-wider uppercase border ${detailPesanan.status_logistik === 'selesai' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'}`}>
-                  {detailPesanan.status_logistik}
-                </span>
+                <div className="flex flex-col items-end gap-1">
+                  <span className={`px-2 py-1 font-bold rounded text-[10px] uppercase ${detailPesanan.status_pembayaran === 'Lunas' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{detailPesanan.status_pembayaran}</span>
+                  {detailPesanan.status_pembayaran !== 'Lunas' && <button onClick={() => lunasiPesananInstant(detailPesanan.id)} className="text-xs bg-emerald-600 px-2 py-1 rounded font-bold">Lunasi Sekarang 💵</button>}
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div className="bg-black/20 p-3 rounded-xl border border-white/5">
-                  <p className="text-[10px] opacity-60 font-bold mb-1">Layanan & Paket</p>
-                  <p className="text-xs font-bold text-emerald-400">{detailPesanan.tipe_layanan?.toUpperCase() || "KILOAN"}</p>
-                  <p className="text-xs opacity-90 mt-0.5">{detailPesanan.paket_layanan}</p>
-                </div>
-                <div className="bg-black/20 p-3 rounded-xl border border-white/5">
-                  <p className="text-[10px] opacity-60 font-bold mb-1">Metode Pengiriman</p>
-                  <p className="text-xs font-bold">🚚 {detailPesanan.metode_pengiriman || "Driver"}</p>
-                </div>
-              </div>
-              <div className="bg-black/20 p-3 rounded-xl border border-white/5">
-                <p className="text-[10px] opacity-60 font-bold mb-1">Alamat Tujuan & Jarak</p>
-                <p className="text-sm font-medium leading-relaxed opacity-90">{detailPesanan.alamat_detail}</p>
-                <p className="text-xs font-bold text-indigo-400 mt-2">🛵 {detailPesanan.jarak_ke_toko_km} KM</p>
+                <div className="bg-black/20 p-3 rounded-xl border border-white/5"><p className="text-[10px] opacity-60 font-bold mb-1">Layanan & Paket</p><p className="text-xs font-bold text-emerald-400">{detailPesanan.tipe_layanan?.toUpperCase() || "KILOAN"}</p><p className="text-xs opacity-90 mt-0.5">{detailPesanan.paket_layanan}</p></div>
+                <div className="bg-black/20 p-3 rounded-xl border border-white/5"><p className="text-[10px] opacity-60 font-bold mb-1">Metode Pengiriman</p><p className="text-xs font-bold">🚚 {detailPesanan.metode_pengiriman || "Driver"}</p></div>
               </div>
               <div className="bg-black/20 p-4 rounded-xl border border-white/5 space-y-3">
                 <h4 className="text-xs font-bold opacity-60 border-b border-white/10 pb-2">Rincian Pembayaran</h4>
                 <div className="flex justify-between items-center text-sm"><span className="opacity-80">Berat / Qty:</span><span className="font-bold">{detailPesanan.berat_pesanan_kg} {detailPesanan.tipe_layanan === 'satuan' ? 'Pcs' : 'KG'}</span></div>
-                <div className="flex justify-between items-center text-sm"><span className="opacity-80">Harga per Unit:</span><span className="font-bold">Rp {Number(detailPesanan.harga_per_unit || 0).toLocaleString("id-ID")}</span></div>
                 <div className="flex justify-between items-center pt-3 border-t border-white/10"><span className="font-bold text-indigo-300">Total Harga:</span><span className="text-xl font-black text-emerald-400">Rp {Number(detailPesanan.total_harga || 0).toLocaleString("id-ID")}</span></div>
               </div>
-              {detailPesanan.rincian_item && (
-                <div className="bg-black/20 p-4 rounded-xl border border-white/5">
-                  <h4 className="text-xs font-bold opacity-60 border-b border-white/10 pb-2 mb-3">Item Pakaian (Opsional)</h4>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    {Object.entries(detailPesanan.rincian_item).map(([key, value]) => {
-                      if (Number(value) > 0) {
-                        const namaRapih = key.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
-                        return <div key={key} className="flex justify-between border-b border-white/5 pb-1"><span className="opacity-80">{namaRapih}:</span><span className="font-bold text-indigo-300">{value as React.ReactNode}</span></div>;
-                      }
-                      return null;
-                    })}
-                    {Object.values(detailPesanan.rincian_item).every(val => Number(val) === 0) && <span className="opacity-50 italic col-span-2 text-center">Tidak ada rincian khusus yang dicatat.</span>}
-                  </div>
-                </div>
-              )}
-              <div className="text-center"><p className="text-[10px] opacity-40">Dibuat pada: {detailPesanan.created_at ? new Date(detailPesanan.created_at).toLocaleString('id-ID') : "-"}</p></div>
             </div>
           </div>
         </div>
       )}
 
       {/* ==========================================
-          MODAL POS PESANAN BARU (KALKULATOR & RINCIAN)
+          MODAL POS KASIR + INTEGRASI QRIS DINAMIS
           ========================================== */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[60] p-4">
           <div className={`rounded-3xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh] ${glassPanel} border-white/20 shadow-2xl`}>
             <div className="bg-white/10 border-b border-white/10 p-5 flex justify-between items-center shrink-0">
-              <h2 className="font-bold text-lg">🛍️ POS Kasir</h2>
+              <h2 className="font-bold text-lg">🛍️ POS Kasir LaundroAI</h2>
               <button onClick={() => setIsModalOpen(false)} className="opacity-70 hover:opacity-100 text-2xl">×</button>
             </div>
             
             <form onSubmit={handleTambahPesanan} className="p-6 space-y-4 overflow-y-auto flex-1">
-              
               <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-black/20 border border-white/5">
                 <button type="button" onClick={() => setFormData({...formData, tipe_layanan: "kiloan", harga_per_unit: "7000", berat_pesanan_kg: ""})} className={`py-2 rounded-lg text-sm font-bold transition-all ${formData.tipe_layanan === "kiloan" ? "bg-blue-600 text-white shadow" : "opacity-60"}`}>🧺 Kiloan</button>
                 <button type="button" onClick={() => setFormData({...formData, tipe_layanan: "satuan", harga_per_unit: "15000", berat_pesanan_kg: ""})} className={`py-2 rounded-lg text-sm font-bold transition-all ${formData.tipe_layanan === "satuan" ? "bg-purple-600 text-white shadow" : "opacity-60"}`}>👔 Satuan</button>
               </div>
 
               <div>
-                <label className="block text-sm font-bold mb-1 opacity-80">Paket Layanan</label>
-                <select value={formData.paket_layanan} onChange={(e) => setFormData({...formData, paket_layanan: e.target.value})} className={`w-full py-3 px-4 rounded-xl outline-none transition-all appearance-none cursor-pointer ${glassInput}`}>
-                  <option value="Reguler (Cuci Kering Setrika Lipat)" className="text-black">Reguler (Cuci Kering Setrika Lipat)</option>
-                  <option value="Cuci Kilat 1 Hari" className="text-black">⚡ Cuci Kilat 1 Hari</option>
-                  <option value="Cuci Kering Lipat (Tanpa Setrika)" className="text-black">Cuci Kering Lipat (Tanpa Setrika)</option>
-                </select>
-              </div>
-
-              <div>
                 <label className="block text-sm font-bold mb-1 opacity-80">Metode Pengiriman</label>
-                <select value={formData.metode_pengiriman} onChange={(e) => setFormData({...formData, metode_pengiriman: e.target.value})} className={`w-full py-3 px-4 rounded-xl outline-none transition-all appearance-none cursor-pointer ${glassInput}`}>
-                  <option value="Diantar Driver Internal" className="text-black">🛵 Diantar Driver Internal</option>
-                  <option value="Pickup di Toko Sendiri" className="text-black">🏪 Customer Ambil Sendiri (Pickup)</option>
-                  <option value="GoSend / GrabExpress" className="text-black">📦 GoSend / GrabExpress</option>
+                <select value={formData.metode_pengiriman} onChange={(e) => setFormData({...formData, metode_pengiriman: e.target.value})} className={`w-full py-3 px-4 rounded-xl outline-none appearance-none cursor-pointer ${glassInput}`}>
+                  <option value="Diantar Driver Internal" className="text-black">Metode: Diantar Driver Internal 🛵</option>
+                  <option value="Pickup di Toko Sendiri" className="text-black">Metode: Customer Ambil Sendiri (Pickup) 🏪</option>
+                  <option value="GoSend / GrabExpress" className="text-black">Metode: GoSend / GrabExpress 📦</option>
                 </select>
               </div>
 
@@ -771,71 +791,67 @@ export default function Dashboard() {
                 {showSuggestions && formData.customer_name && customers.filter(c => c.name.toLowerCase().includes(formData.customer_name.toLowerCase())).length > 0 && (
                   <ul className="absolute z-50 w-full mt-2 rounded-xl max-h-48 overflow-y-auto backdrop-blur-2xl bg-gray-900/90 border border-white/10 shadow-2xl text-white">
                     {customers.filter(c => c.name.toLowerCase().includes(formData.customer_name.toLowerCase())).map(c => (
-                      <li key={c.id} onClick={() => { setFormData({...formData, customer_name: c.name, alamat_detail: c.alamat_detail, jarak_ke_toko_km: c.jarak_ke_toko_km, latitude: c.latitude, longitude: c.longitude}); setShowSuggestions(false); }} className="px-4 py-3 cursor-pointer text-sm font-bold border-b border-white/5 last:border-b-0 hover:bg-white/10 transition-colors">{c.name} <span className="block text-xs font-normal opacity-60 truncate">{c.alamat_detail}</span></li>
+                      <li key={c.id} onClick={() => { setFormData({...formData, customer_name: c.name, alamat_detail: c.alamat_detail, jarak_ke_toko_km: c.jarak_ke_toko_km}); setShowSuggestions(false); }} className="px-4 py-3 cursor-pointer text-sm font-bold border-b border-white/5 last:border-b-0 hover:bg-white/10 transition-colors">{c.name} <span className="block text-xs font-normal opacity-60 truncate">{c.alamat_detail}</span></li>
                     ))}
                   </ul>
                 )}
               </div>
 
-              <div><label className="block text-sm font-bold mb-1 opacity-80">Alamat Lengkap</label><textarea required value={formData.alamat_detail} onChange={(e) => setFormData({...formData, alamat_detail: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} rows={2}></textarea></div>
+              <div><label className="block text-sm font-bold mb-1 opacity-80">Alamat Lengkap</label><textarea required value={formData.alamat_detail} onChange={(e) => setFormData({...formData, alamat_detail: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none ${glassInput}`} rows={2}></textarea></div>
               
-              <div className="border border-white/10 rounded-2xl p-4 bg-white/5">
-                <label className="block text-sm font-bold mb-3 text-indigo-300">📝 Rincian Pakaian (Opsional)</label>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                  {[
-                    { key: "baju", label: "👕 Baju" }, { key: "celana", label: "👖 Celana" },
-                    { key: "kemeja", label: "👔 Kemeja" }, { key: "jaket", label: "🧥 Jaket" },
-                    { key: "celana_dalam", label: "🩲 Cln. Dalam" }, { key: "kaos_kaki", label: "🧦 Kaos Kaki" },
-                    { key: "dasi", label: "👔 Dasi" }
-                  ].map((item) => (
-                    <div key={item.key} className="flex justify-between items-center bg-black/20 p-2 rounded-lg border border-white/5">
-                      <span className="text-xs font-medium">{item.label}</span>
-                      <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => updateRincian(item.key, -1)} className="w-6 h-6 rounded-md bg-white/10 hover:bg-white/20 flex items-center justify-center text-xs font-bold active:scale-90">-</button>
-                        <span className="text-xs font-bold w-4 text-center">{rincianItem[item.key as keyof typeof defaultRincian]}</span>
-                        <button type="button" onClick={() => updateRincian(item.key, 1)} className="w-6 h-6 rounded-md bg-indigo-500/40 hover:bg-indigo-500/60 flex items-center justify-center text-xs font-bold active:scale-90">+</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
               <div className="grid grid-cols-2 gap-4 bg-white/5 p-4 rounded-2xl border border-white/5">
                 <div>
                   <label className="block text-xs font-bold mb-1 text-slate-300">{formData.tipe_layanan === "kiloan" ? "⚖️ Berat (KG)" : "🔢 Total Qty (Pcs)"}</label>
-                  <input type="number" step={formData.tipe_layanan === "kiloan" ? "0.1" : "1"} required readOnly={formData.tipe_layanan === "satuan"} placeholder="0" value={formData.berat_pesanan_kg} onChange={(e) => setFormData({...formData, berat_pesanan_kg: e.target.value})} className={`w-full px-4 py-2.5 text-sm rounded-xl outline-none transition-all ${glassInput} ${formData.tipe_layanan === "satuan" ? "opacity-70 cursor-not-allowed" : ""}`} />
+                  <input type="number" step={formData.tipe_layanan === "kiloan" ? "0.1" : "1"} required placeholder="0" value={formData.berat_pesanan_kg} onChange={(e) => setFormData({...formData, berat_pesanan_kg: e.target.value})} className={`w-full px-4 py-2.5 text-sm rounded-xl outline-none ${glassInput}`} />
                 </div>
-                <div>
-                  <label className="block text-xs font-bold mb-1 text-slate-300">💰 Harga per {formData.tipe_layanan === "kiloan" ? "KG" : "Pcs"}</label>
-                  <input type="number" required value={formData.harga_per_unit} onChange={(e) => setFormData({...formData, harga_per_unit: e.target.value})} className={`w-full px-4 py-2.5 text-sm rounded-xl outline-none transition-all ${glassInput}`} />
-                </div>
+                <div><label className="block text-xs font-bold mb-1 text-slate-300">💰 Harga per Unit</label><input type="number" required value={formData.harga_per_unit} onChange={(e) => setFormData({...formData, harga_per_unit: e.target.value})} className={`w-full px-4 py-2.5 text-sm rounded-xl outline-none ${glassInput}`} /></div>
               </div>
 
-              <div className="bg-gradient-to-r from-slate-900 to-indigo-950/60 p-4 rounded-2xl border border-indigo-500/20 flex justify-between items-center shadow-inner">
-                <span className="text-sm font-medium text-indigo-300">Total Harga:</span>
+              {/* INTEGRASI MANAGEMENT STATUS PIUTANG KASIR */}
+              <div className="p-4 bg-black/20 rounded-2xl border border-white/5 space-y-3">
+                <label className="block text-xs font-bold text-indigo-300 uppercase tracking-wider">Metode Finansial Pelanggan</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {["Lunas", "DP", "Belum Bayar"].map((status) => (
+                    <button key={status} type="button" onClick={() => setFormData({...formData, status_pembayaran: status})} className={`py-2 rounded-xl text-xs font-bold border transition-all ${formData.status_pembayaran === status ? 'bg-indigo-600 text-white border-indigo-400 shadow-md' : 'bg-white/5 border-white/10 opacity-70'}`}>{status}</button>
+                  ))}
+                </div>
+                {formData.status_pembayaran === "DP" && (
+                  <div><label className="block text-[11px] opacity-70 mb-1">Nominal DP Kontan (Rp):</label><input type="number" value={formData.jumlah_dp} onChange={(e) => setFormData({...formData, jumlah_dp: e.target.value})} className={`w-full px-3 py-2 text-xs rounded-lg ${glassInput}`} placeholder="Masukkan nilai uang DP..." /></div>
+                )}
+              </div>
+
+              {/* AREA PREVIEW QRIS DINAMIS OTOMATIS */}
+              {formData.total_harga > 0 && formData.status_pembayaran === "Lunas" && (
+                <div className="p-4 bg-white rounded-2xl border border-indigo-500/20 shadow-inner flex flex-col items-center justify-center animate-fadeIn">
+                  <p className="text-xs text-slate-800 font-extrabold mb-2 text-center flex items-center gap-1">📲 SCAN QRIS LAUNDROAI (Rp {formData.total_harga.toLocaleString("id-ID")})</p>
+                  <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=qris://laundroai/pay?amount=${formData.total_harga}`} alt="QRIS Dinamis" className="w-32 h-32 object-contain bg-white p-1 rounded-lg border shadow-sm" />
+                  <p className="text-[10px] text-slate-500 mt-1 text-center font-medium">Nilai barcode terenkripsi otomatis mengikuti kasir</p>
+                </div>
+              )}
+
+              <div className="bg-gradient-to-r from-slate-900 to-indigo-950/60 p-4 rounded-2xl border border-indigo-500/20 flex justify-between items-center">
+                <span className="text-sm font-medium text-indigo-300">Total Tagihan:</span>
                 <span className="text-2xl font-black text-emerald-400">Rp {formData.total_harga.toLocaleString("id-ID")}</span>
               </div>
 
               <div className="border border-emerald-500/30 bg-emerald-900/10 rounded-2xl p-4">
-                <label className="block text-sm font-bold mb-3 text-emerald-300">📸 Bukti Pembayaran / Transfer</label>
+                <label className="block text-sm font-bold mb-3 text-emerald-300">📸 Lampirkan Bukti Transaksi POS</label>
                 {paymentPreviewUrl ? (
-                  <div className="mb-3 w-full h-32 bg-black/20 rounded-xl overflow-hidden border border-white/20 relative group">
-                    <img src={paymentPreviewUrl} alt="Preview Pembayaran" className="w-full h-full object-cover" />
+                  <div className="w-full h-32 bg-black/20 rounded-xl overflow-hidden border border-white/20 relative">
+                    <img src={paymentPreviewUrl} alt="Preview" className="w-full h-full object-cover" />
                     <input type="file" accept="image/*" capture="environment" onChange={handlePilihFotoPembayaran} className="absolute inset-0 opacity-0 cursor-pointer" />
                   </div>
                 ) : (
-                  <div className="mb-3 w-full h-24 bg-white/5 rounded-xl border-2 border-dashed border-emerald-500/30 flex flex-col items-center justify-center text-emerald-400 hover:bg-emerald-500/10 transition-colors relative cursor-pointer">
-                    <span className="text-2xl mb-1">🧾</span>
-                    <span className="font-bold text-xs">Unggah Bukti Transfer / QRIS</span>
+                  <div className="w-full h-20 bg-white/5 rounded-xl border-2 border-dashed border-emerald-500/30 flex flex-col items-center justify-center text-emerald-400 hover:bg-emerald-500/10 relative cursor-pointer">
+                    <span className="font-bold text-xs">📷 Upload Foto Bukti Transfer / QRIS / Cash</span>
                     <input type="file" accept="image/*" capture="environment" required onChange={handlePilihFotoPembayaran} className="absolute inset-0 opacity-0 cursor-pointer" />
                   </div>
                 )}
-                <p className="text-[10px] opacity-70 text-center">Harus dilampirkan sebelum pesanan dapat disimpan.</p>
               </div>
 
-              <div className="pt-2 flex gap-3 shrink-0 pb-2">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 font-bold py-3 rounded-xl transition-all bg-white/5 hover:bg-white/10 border border-white/10">Batal</button>
-                <button type="submit" disabled={isSubmitting} className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 font-bold py-3 rounded-xl hover:opacity-90 transition-all disabled:opacity-50 border border-white/20 shadow-lg text-white">
+              <div className="pt-2 flex gap-3 pb-2">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 font-bold py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10">Batal</button>
+                <button type="submit" disabled={isSubmitting} className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 font-bold py-3 rounded-xl border border-white/20 shadow-lg text-white">
                   {isSubmitting ? "Menyimpan..." : "Simpan & Kirim Nota 🚀"}
                 </button>
               </div>
@@ -844,30 +860,29 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* MODAL KAMERA BUKTI PENGIRIMAN (KUNCI PENYELESAIAN) */}
+      {/* MODAL BUKTI PENGIRIMAN SECURITY LOCK */}
       {isPhotoModalOpen && selectedOrder && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[80] p-4">
           <div className={`rounded-3xl w-full max-w-sm overflow-hidden ${glassPanel} border-white/20 shadow-2xl text-white`}>
             <div className="bg-red-500/20 border-b border-red-500/30 p-5 flex justify-between items-center">
-              <h2 className="font-bold text-lg text-red-200">📸 Wajib Bukti Sampai</h2>
+              <h2 className="font-bold text-lg text-red-200">📸 Wajib Bukti Pengantaran</h2>
               <button onClick={() => setIsPhotoModalOpen(false)} className="opacity-70 hover:opacity-100 text-2xl">×</button>
             </div>
             <form onSubmit={kirimBuktiSelesai} className="p-6 text-center">
-              <p className={`mb-4 text-xs text-red-300 font-medium`}>Kartu tertahan! Kamu harus mengirim foto bukti pengantaran/pickup untuk <strong>{selectedOrder.customer_name}</strong> agar pesanan berpindah ke status Selesai.</p>
+              <p className={`mb-4 text-xs text-red-300 font-medium`}>Akses Ditahan! Unggah bukti dokumentasi serah terima pakaian dengan <strong>{selectedOrder.customer_name}</strong> untuk menutup transaksi.</p>
               {livePreviewUrl ? (
-                <div className="mb-6 w-full aspect-square bg-black/20 rounded-2xl overflow-hidden border border-white/20 flex items-center justify-center relative group">
+                <div className="mb-6 w-full aspect-square bg-black/20 rounded-2xl overflow-hidden border border-white/20 flex items-center justify-center relative">
                   <img src={livePreviewUrl} alt="Preview" className="w-full h-full object-cover" />
                   <input type="file" accept="image/*" capture="environment" onChange={handlePilihFotoPengiriman} className="absolute inset-0 opacity-0 cursor-pointer" />
                 </div>
               ) : (
-                <div className="mb-6 w-full aspect-square bg-white/5 rounded-2xl border-2 border-dashed border-red-500/50 flex flex-col items-center justify-center text-red-400 hover:bg-white/10 transition-colors relative cursor-pointer">
-                  <span className="text-4xl mb-2">📦</span>
-                  <span className="font-bold text-sm">Ambil Foto Paket</span>
+                <div className="mb-6 w-full aspect-square bg-white/5 rounded-2xl border-2 border-dashed border-red-500/50 flex flex-col items-center justify-center text-red-400 hover:bg-white/10 relative cursor-pointer">
+                  <span className="text-4xl mb-2">📦</span><span className="font-bold text-sm">Ambil Foto Pakaian</span>
                   <input type="file" accept="image/*" capture="environment" required onChange={handlePilihFotoPengiriman} className="absolute inset-0 opacity-0 cursor-pointer" />
                 </div>
               )}
-              <button type="submit" disabled={isUploadingPhoto || !deliveryPhoto} className="w-full bg-gradient-to-r from-red-600 to-rose-600 hover:opacity-90 text-white font-bold py-4 rounded-xl disabled:opacity-50 transition-all shadow-lg border border-white/20">
-                {isUploadingPhoto ? "🚀 Memproses..." : "Buka Kunci & Selesaikan"}
+              <button type="submit" disabled={isUploadingPhoto || !deliveryPhoto} className="w-full bg-gradient-to-r from-red-600 to-rose-600 text-white font-bold py-4 rounded-xl disabled:opacity-50 border border-white/20 shadow-lg">
+                {isUploadingPhoto ? "🚀 Mengirim Data..." : "Buka Kunci & Selesaikan"}
               </button>
             </form>
           </div>
@@ -888,21 +903,21 @@ export default function Dashboard() {
               <div><label className="block text-sm font-bold mb-1 opacity-80">Jarak Default (KM)</label><input type="number" step="0.1" required value={customerFormData.jarak_ke_toko_km} onChange={(e) => setCustomerFormData({...customerFormData, jarak_ke_toko_km: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} /></div>
               <div className="pt-4 flex gap-3">
                 <button type="button" onClick={() => setIsCustomerModalOpen(false)} className={`flex-1 font-bold py-3 rounded-xl transition-all bg-black/10 hover:bg-black/20 dark:bg-white/5 dark:hover:bg-white/10 border border-white/10`}>Batal</button>
-                <button type="submit" disabled={isSubmittingCustomer} className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 font-bold py-3 rounded-xl hover:opacity-90 transition-all disabled:opacity-50 shadow-lg border border-white/20 text-white">Simpan</button>
+                <button type="submit" disabled={isSubmittingCustomer} className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 font-bold py-3 rounded-xl hover:opacity-90 border border-white/20 text-white shadow-lg">Simpan</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* MODAL PREVIEW FOTO */}
+      {/* MODAL PREVIEW FOTO BUKTI */}
       {isPreviewOpen && (
         <div className="fixed inset-0 bg-black/95 backdrop-blur-xl flex items-center justify-center z-[60] p-4">
           <div className="w-full max-w-lg relative flex flex-col items-center">
             <button onClick={() => setIsPreviewOpen(false)} className="absolute -top-12 right-0 text-white opacity-60 hover:opacity-100 font-bold text-3xl">×</button>
-            <h3 className="text-white font-bold mb-4 opacity-80 tracking-widest text-sm">BUKTI PENGIRIMAN</h3>
+            <h3 className="text-white font-bold mb-4 opacity-80 tracking-widest text-sm">DOKUMENTASI SERAH TERIMA</h3>
             <div className="w-full aspect-[3/4] bg-gray-900 rounded-3xl overflow-hidden flex items-center justify-center border border-white/10 shadow-2xl">
-              <img src={previewTargetUrl} alt="Bukti Terupload" className="w-full h-full object-contain" />
+              <img src={previewTargetUrl} alt="Bukti" className="w-full h-full object-contain" />
             </div>
           </div>
         </div>

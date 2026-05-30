@@ -52,7 +52,7 @@ export default function Dashboard() {
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [isSubmittingCustomer, setIsSubmittingCustomer] = useState(false);
   const [customerFormData, setCustomerFormData] = useState({
-    name: "", alamat_detail: "", jarak_ke_toko_km: "", latitude: "", longitude: ""
+    name: "", alamat_detail: "", jarak_ke_toko_km: ""
   });
 
   // STATE KAMERA/FOTO
@@ -192,21 +192,20 @@ export default function Dashboard() {
     else { setIsModalOpen(false); setFormData({ customer_name: "", alamat_detail: "", jarak_ke_toko_km: "", berat_pesanan_kg: "", latitude: "", longitude: "" }); ambilData(); }
   }
 
-  async function handleTambahCustomer(e: React.FormEvent) {
+ async function handleTambahCustomer(e: React.FormEvent) {
     e.preventDefault();
     setIsSubmittingCustomer(true);
     const { error } = await supabase.from("customers").insert([
       {
         name: customerFormData.name,
         alamat_detail: customerFormData.alamat_detail,
-        jarak_ke_toko_km: Number(customerFormData.jarak_ke_toko_km),
-        latitude: Number(customerFormData.latitude),
-        longitude: Number(customerFormData.longitude)
+        jarak_ke_toko_km: Number(customerFormData.jarak_ke_toko_km)
+        // Pengiriman Latitude & Longitude ke database dihapus
       }
     ]);
     setIsSubmittingCustomer(false);
     if (error) alert("Gagal menyimpan data pelanggan. Error: " + error.message);
-    else { setIsCustomerModalOpen(false); setCustomerFormData({ name: "", alamat_detail: "", jarak_ke_toko_km: "", latitude: "", longitude: "" }); ambilData(); }
+    else { setIsCustomerModalOpen(false); setCustomerFormData({ name: "", alamat_detail: "", jarak_ke_toko_km: "" }); ambilData(); }
   }
 
   async function generateDanKirimLaporan() {
@@ -634,7 +633,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {isCustomerModalOpen && (
+     {isCustomerModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className={`rounded-3xl w-full max-w-md overflow-hidden ${glassPanel} border-white/20 shadow-2xl`}>
             <div className="bg-white/10 border-b border-white/10 p-5 flex justify-between items-center rounded-t-3xl">
@@ -646,13 +645,7 @@ export default function Dashboard() {
               <div><label className="block text-sm font-bold mb-1 opacity-80">Alamat Default</label><textarea required value={customerFormData.alamat_detail} onChange={(e) => setCustomerFormData({...customerFormData, alamat_detail: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} rows={2}></textarea></div>
               <div><label className="block text-sm font-bold mb-1 opacity-80">Jarak Default (KM)</label><input type="number" step="0.1" required value={customerFormData.jarak_ke_toko_km} onChange={(e) => setCustomerFormData({...customerFormData, jarak_ke_toko_km: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} /></div>
               
-              <div className="border-t border-white/10 pt-4 mt-2">
-                <label className="block text-sm font-bold mb-3 text-purple-500 dark:text-purple-400">📍 Titik Koordinat Rumah</label>
-                <div className="grid grid-cols-2 gap-4">
-                  <div><label className="block text-xs font-bold mb-1 opacity-70">Latitude</label><input type="number" step="any" required value={customerFormData.latitude} onChange={(e) => setCustomerFormData({...customerFormData, latitude: e.target.value})} className={`w-full px-3 py-2 text-sm rounded-xl outline-none transition-all ${glassInput}`} /></div>
-                  <div><label className="block text-xs font-bold mb-1 opacity-70">Longitude</label><input type="number" step="any" required value={customerFormData.longitude} onChange={(e) => setCustomerFormData({...customerFormData, longitude: e.target.value})} className={`w-full px-3 py-2 text-sm rounded-xl outline-none transition-all ${glassInput}`} /></div>
-                </div>
-              </div>
+              {/* Bagian Titik Koordinat (Latitude & Longitude) sudah dihapus secara permanen dari sini */}
 
               <div className="pt-4 flex gap-3">
                 <button type="button" onClick={() => setIsCustomerModalOpen(false)} className={`flex-1 font-bold py-3 rounded-xl transition-all bg-black/10 hover:bg-black/20 dark:bg-white/5 dark:hover:bg-white/10 border border-white/10`}>Batal</button>

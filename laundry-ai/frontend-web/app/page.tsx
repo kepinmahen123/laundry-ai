@@ -97,14 +97,8 @@ export default function Dashboard() {
     router.push("/login");
   }
 
-  function hitungWaktuTunggu(waktuDibuat: string) {
-    if (!waktuDibuat) return "-";
-    const sekarang = new Date();
-    const dibuat = new Date(waktuDibuat);
-    const selisihMs = Math.max(0, sekarang.getTime() - dibuat.getTime());
-    const selisihMenitTotal = Math.floor(selisihMs / (1000 * 60));
-
-    function formatTanggalWaktu(waktuDibuat: string) {
+  // --- FUNGSI FORMAT TANGGAL YANG SUDAH DIPISAH ---
+  function formatTanggalWaktu(waktuDibuat: string) {
     if (!waktuDibuat) return "-";
     const d = new Date(waktuDibuat);
     const tanggal = String(d.getDate()).padStart(2, '0');
@@ -113,6 +107,14 @@ export default function Dashboard() {
     const jam = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
     return `${tanggal}/${bulan}/${tahun} - ${jam} WIB`;
   }
+
+  // --- FUNGSI HITUNG WAKTU TUNGGU SLA ---
+  function hitungWaktuTunggu(waktuDibuat: string) {
+    if (!waktuDibuat) return "-";
+    const sekarang = new Date();
+    const dibuat = new Date(waktuDibuat);
+    const selisihMs = Math.max(0, sekarang.getTime() - dibuat.getTime());
+    const selisihMenitTotal = Math.floor(selisihMs / (1000 * 60));
     
     if (selisihMenitTotal < 60) return `${selisihMenitTotal} mnt lalu`;
     const selisihJam = Math.floor(selisihMenitTotal / 60);
@@ -204,7 +206,7 @@ export default function Dashboard() {
     }
   }
 
- async function handleTambahCustomer(e: React.FormEvent) {
+  async function handleTambahCustomer(e: React.FormEvent) {
     e.preventDefault();
     setIsSubmittingCustomer(true);
     const { error } = await supabase.from("customers").insert([
@@ -212,7 +214,6 @@ export default function Dashboard() {
         name: customerFormData.name,
         alamat_detail: customerFormData.alamat_detail,
         jarak_ke_toko_km: Number(customerFormData.jarak_ke_toko_km)
-        // Pengiriman Latitude & Longitude ke database dihapus
       }
     ]);
     setIsSubmittingCustomer(false);
@@ -413,8 +414,7 @@ export default function Dashboard() {
                     <tr>
                       <th className="p-5 font-semibold text-sm tracking-wide">Nama Pelanggan</th>
                       <th className="p-5 font-semibold text-sm tracking-wide">Alamat Default</th>
-                      <th className="p-5 font-semibold text-sm tracking-wide">Jarak</th>
-                      <th className="p-5 font-semibold text-sm tracking-wide">Koordinat Maps</th>
+                      <th className="p-5 font-semibold text-sm tracking-wide">Jarak (KM)</th>
                     </tr>
                   </thead>
                   <tbody className={`divide-y ${isDarkMode ? 'divide-white/5' : 'divide-black/5'}`}>
@@ -423,7 +423,6 @@ export default function Dashboard() {
                         <td className="p-5 font-bold whitespace-nowrap">{c.name}</td>
                         <td className="p-5 text-sm min-w-[200px]">{c.alamat_detail}</td>
                         <td className="p-5 font-bold text-indigo-400 whitespace-nowrap">{c.jarak_ke_toko_km} km</td>
-                        <td className="p-5 text-sm font-mono opacity-80 whitespace-nowrap">{c.latitude}, {c.longitude}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -679,8 +678,6 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Bagian Input Koordinat Maps (Latitude & Longitude) sudah dibersihkan sepenuhnya */}
-
               <div className="pt-4 flex gap-3">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 font-bold py-3 rounded-xl transition-all bg-black/10 hover:bg-black/20 dark:bg-white/5 dark:hover:bg-white/10 border border-white/10">Batal</button>
                 <button type="submit" disabled={isSubmitting} className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 font-bold py-3 rounded-xl hover:opacity-90 transition-all disabled:opacity-50 border border-white/20 shadow-lg text-white">Simpan</button>
@@ -701,8 +698,6 @@ export default function Dashboard() {
               <div><label className="block text-sm font-bold mb-1 opacity-80">Nama Lengkap</label><input type="text" required value={customerFormData.name} onChange={(e) => setCustomerFormData({...customerFormData, name: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} /></div>
               <div><label className="block text-sm font-bold mb-1 opacity-80">Alamat Default</label><textarea required value={customerFormData.alamat_detail} onChange={(e) => setCustomerFormData({...customerFormData, alamat_detail: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} rows={2}></textarea></div>
               <div><label className="block text-sm font-bold mb-1 opacity-80">Jarak Default (KM)</label><input type="number" step="0.1" required value={customerFormData.jarak_ke_toko_km} onChange={(e) => setCustomerFormData({...customerFormData, jarak_ke_toko_km: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} /></div>
-              
-              {/* Bagian Titik Koordinat (Latitude & Longitude) sudah dihapus secara permanen dari sini */}
 
               <div className="pt-4 flex gap-3">
                 <button type="button" onClick={() => setIsCustomerModalOpen(false)} className={`flex-1 font-bold py-3 rounded-xl transition-all bg-black/10 hover:bg-black/20 dark:bg-white/5 dark:hover:bg-white/10 border border-white/10`}>Batal</button>

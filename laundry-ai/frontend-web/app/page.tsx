@@ -29,24 +29,26 @@ export default function Dashboard() {
   const [isDarkMode, setIsDarkMode] = useState(true); 
   const [activeMenu, setActiveMenu] = useState("Dashboard");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
-  const [completionDate, setCompletionDate] = useState<string | null>(null); 
   
+  // PERBAIKAN SISTEM TANGGAL LOKAL (WIB)
   const [sortBy, setSortBy] = useState<"terbaru" | "terdekat">("terbaru");
   const [filterTanggal, setFilterTanggal] = useState<string>(() => {
     const d = new Date();
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }); 
 
-  // ==========================================
-  // STATE FITUR BARU: KALENDER PENDAPATAN
-  // ==========================================
-  const [calendarMonth, setCalendarMonth] = useState<number>(new Date().getMonth()); // 0 = Jan, 11 = Des
+  // STATE KALENDER PENDAPATAN
+  const [calendarMonth, setCalendarMonth] = useState<number>(new Date().getMonth());
   const [calendarYear, setCalendarYear] = useState<number>(new Date().getFullYear());
 
   // STATE FORM & POS
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false); 
+  
+  // STATE BUKTI PEMBAYARAN
+  const [paymentPhoto, setPaymentPhoto] = useState<File | null>(null);
+  const [paymentPreviewUrl, setPaymentPreviewUrl] = useState<string | null>(null);
   
   const defaultRincian = { baju: 0, celana: 0, kemeja: 0, jaket: 0, celana_dalam: 0, kaos_kaki: 0, dasi: 0 };
   const [rincianItem, setRincianItem] = useState(defaultRincian);
@@ -78,7 +80,16 @@ export default function Dashboard() {
     setRincianItem(prev => ({ ...prev, [itemKey]: Math.max(0, prev[itemKey as keyof typeof defaultRincian] + delta) }));
   };
 
-  // KANBAN DRAG & DROP & NOTIFIKASI OTOMATIS
+  function handlePilihFotoPembayaran(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] || null;
+    setPaymentPhoto(file);
+    if (file) setPaymentPreviewUrl(URL.createObjectURL(file));
+    else setPaymentPreviewUrl(null);
+  }
+
+  // ==========================================
+  // KANBAN DRAG & DROP + PENCEGAHAN SELESAI
+  // ==========================================
   const KANBAN_COLUMNS = ["Antrean", "Sedang Dicuci", "Disetrika", "Packing", "Siap Kirim", "selesai"];
   const [draggedOrderId, setDraggedOrderId] = useState<number | null>(null);
 
@@ -98,6 +109,11 @@ export default function Dashboard() {
   const perbaruiStatusPesanan = async (id: number, newStatus: string) => {
     const orderLama = pesanan.find(p => p.id === id);
     if (!orderLama) return;
+
+    if (newStatus === "selesai") {
+      bukaModalFoto(id, orderLama.customer_name);
+      return; 
+    }
 
     setPesanan(prev => prev.map(p => p.id === id ? { ...p, status_logistik: newStatus } : p));
     const { error } = await supabase.from("orders").update({ status_logistik: newStatus }).eq("id", id);
@@ -140,7 +156,6 @@ export default function Dashboard() {
   const [previewTargetUrl, setPreviewTargetUrl] = useState<string>("");
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false); 
-  const [timerTick, setTimerTick] = useState(0);
   const { isLoaded: isMapLoaded } = useJsApiLoader({ id: 'google-map-script', googleMapsApiKey: GOOGLE_MAPS_API_KEY });
   const [selectedMarker, setSelectedMarker] = useState<any>(null);
 
@@ -153,11 +168,6 @@ export default function Dashboard() {
     }
     cekKeamanan();
   }, [router]);
-
-  useEffect(() => {
-    const interval = setInterval(() => setTimerTick(prev => prev + 1), 60000); 
-    return () => clearInterval(interval);
-  }, []);
 
   async function ambilData() {
     const { data: ordersData } = await supabase.from("orders").select("*").order("id", { ascending: false });
@@ -176,7 +186,7 @@ export default function Dashboard() {
     setDeliveryPhoto(null); setLivePreviewUrl(null); setIsPhotoModalOpen(true);
   }
 
-  function handlePilihFoto(e: React.ChangeEvent<HTMLInputElement>) {
+  function handlePilihFotoPengiriman(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] || null;
     setDeliveryPhoto(file);
     if (file) setLivePreviewUrl(URL.createObjectURL(file));
@@ -199,32 +209,41 @@ export default function Dashboard() {
     try {
       const { error } = await supabase.from("orders").update({ status_logistik: "selesai" }).eq("id", selectedOrder.id);
       if (error) throw new Error(error.message);
+      
       setPesanan(prev => prev.map(p => p.id === selectedOrder.id ? { ...p, status_logistik: "selesai" } : p)); 
 
       const sekarang = new Date();
       const opsiOtomatis: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' };
       const waktuSelesai = sekarang.toLocaleDateString('id-ID', opsiOtomatis) + ' WIB';
 
-      const pesanCaption = `✅ *PESANAN SELESAI*\n\nHalo kak ${selectedOrder.customer_name}! Cucian kamu sudah selesai diproses dan tiba di lokasi.\n🕒 *Waktu Selesai:* ${waktuSelesai}\n📦 Terima kasih sudah mempercayakan kami sebagai tempat laundry Anda.`;
+      const pesanCaption = `✅ *PESANAN SELESAI*\n\nHalo kak ${selectedOrder.customer_name}! Cucian kamu sudah selesai diproses dan tiba di lokasi (atau telah di-pickup).\n🕒 *Waktu Selesai:* ${waktuSelesai}\n📦 Terima kasih sudah mempercayakan kami sebagai tempat laundry Anda.`;
+      
       const fileData = new FormData();
       fileData.append("chat_id", chatId); fileData.append("photo", deliveryPhoto); fileData.append("caption", pesanCaption); fileData.append("parse_mode", "Markdown");
 
       await fetch(`https://api.telegram.org/bot${telegramToken}/sendPhoto`, { method: "POST", body: fileData });
+      
       if (livePreviewUrl) setBuktiFotoUrls(prev => ({ ...prev, [selectedOrder.id]: livePreviewUrl }));
-      alert(`🎉 Pengiriman Berhasil!\nWaktu Penyelesaian: ${waktuSelesai}`);
+      alert(`🎉 Pengiriman Berhasil!\nPesanan telah dipindah ke kolom Selesai.`);
     } catch (err) { 
       alert("Gagal memproses penyelesaian pesanan."); 
     } finally {
-      setIsUploadingPhoto(false); setIsPhotoModalOpen(false); setSelectedOrder(null); setDeliveryPhoto(null);
+      setIsUploadingPhoto(false); setIsPhotoModalOpen(false); setSelectedOrder(null); setDeliveryPhoto(null); setLivePreviewUrl(null);
     }
   }
 
   async function handleTambahPesanan(e: React.FormEvent) {
     e.preventDefault();
+    
+    if (!paymentPhoto) {
+      alert("⚠️ Harap unggah foto bukti pembayaran (Transfer/QRIS/Uang Tunai) terlebih dahulu sebelum menyimpan!");
+      return;
+    }
+
     setIsSubmitting(true);
     
     try {
-      const { error } = await supabase.from("orders").insert([
+      const { data: newOrderData, error } = await supabase.from("orders").insert([
         { 
           customer_name: formData.customer_name, 
           alamat_detail: formData.alamat_detail, 
@@ -240,7 +259,7 @@ export default function Dashboard() {
           rincian_item: rincianItem,
           status_logistik: "Antrean" 
         }
-      ]);
+      ]).select("*");
       
       if (error) throw new Error(error.message);
 
@@ -254,15 +273,16 @@ export default function Dashboard() {
       if (rincianItem.dasi > 0) listRincian.push(`- 👔 Dasi: ${rincianItem.dasi}`);
       
       const teksRincian = listRincian.length > 0 ? `\n\n📝 *Rincian Pakaian:*\n${listRincian.join("\n")}` : "";
+      
+      const orderId = newOrderData && newOrderData[0] ? newOrderData[0].id : "BARU";
 
-      const notaDigital = `🧾 *NOTA PESANAN LAUNDROAI* 🧾
+      const notaDigital = `🧾 *NOTA & BUKTI PEMBAYARAN (#${orderId})* 🧾
 -----------------------------------------
 👤 *Pelanggan:* ${formData.customer_name}
 🏷️ *Layanan:* ${formData.tipe_layanan.toUpperCase()}
 📦 *Paket:* ${formData.paket_layanan}
-📍 *Alamat:* ${formData.alamat_detail}
-🛵 *Jarak:* ${formData.jarak_ke_toko_km} KM
 🚚 *Pengiriman:* ${formData.metode_pengiriman}
+📍 *Alamat:* ${formData.alamat_detail}
 -----------------------------------------
 ⚖️ *Berat / Qty:* ${formData.berat_pesanan_kg} ${formData.tipe_layanan === 'satuan' ? 'Pcs' : 'KG'}
 💵 *Harga per ${formData.tipe_layanan === 'satuan' ? 'Pcs' : 'KG'}:* Rp ${Number(formData.harga_per_unit).toLocaleString('id-ID')}${teksRincian}
@@ -271,10 +291,13 @@ export default function Dashboard() {
 -----------------------------------------
 🙏 _Terima kasih sudah mempercayakan kami sebagai tempat laundry anda...._`;
 
-      await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: chatId, text: notaDigital, parse_mode: "Markdown" })
-      });
+      const telegramFormData = new FormData();
+      telegramFormData.append("chat_id", chatId); 
+      telegramFormData.append("photo", paymentPhoto); 
+      telegramFormData.append("caption", notaDigital); 
+      telegramFormData.append("parse_mode", "Markdown");
+
+      await fetch(`https://api.telegram.org/bot${telegramToken}/sendPhoto`, { method: "POST", body: telegramFormData });
 
       setIsModalOpen(false); 
       setFormData({ 
@@ -284,6 +307,8 @@ export default function Dashboard() {
         harga_per_unit: "7000", total_harga: 0 
       }); 
       setRincianItem(defaultRincian); 
+      setPaymentPhoto(null);
+      setPaymentPreviewUrl(null);
       ambilData(); 
 
     } catch (err: any) {
@@ -322,9 +347,6 @@ export default function Dashboard() {
     } catch (err) { alert("Kesalahan sistem."); } finally { setIsExporting(false); }
   }
 
-  // ==========================================
-  // LOGIKA RENDER DATA KALENDER PENDAPATAN
-  // ==========================================
   const pesananBulanIni = pesanan.filter(p => {
     if (!p.created_at) return false;
     const d = new Date(p.created_at);
@@ -386,9 +408,6 @@ export default function Dashboard() {
       <button onClick={() => setIsSidebarOpen(true)} className={`md:hidden fixed top-4 left-4 z-40 p-3 rounded-xl ${glassPanel} active:scale-95`}><span className="text-xl">☰</span></button>
       {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40" />}
 
-      {/* ==========================================
-          SIDEBAR DENGAN MENU KALENDER BARU
-          ========================================== */}
       <aside className={`fixed md:relative inset-y-0 left-0 z-50 w-64 flex flex-col justify-between ${glassPanel} border-r border-r-white/10 md:m-4 md:rounded-3xl transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}>
         <button onClick={() => setIsSidebarOpen(false)} className="md:hidden absolute top-4 right-4 text-white opacity-70 text-2xl font-bold">✕</button>
         <div>
@@ -413,9 +432,6 @@ export default function Dashboard() {
 
       <main className="flex-1 overflow-y-auto p-6 lg:p-10 pt-20 md:pt-10 scroll-smooth z-10 w-full max-w-full">
         {activeMenu === "Calendar" ? (
-          // ==========================================
-          // RENDER MODUL KALENDER PENDAPATAN
-          // ==========================================
           <div className="max-w-7xl mx-auto flex flex-col h-full">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 shrink-0">
               <div>
@@ -430,7 +446,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Ringkasan Bulan Ini */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
               <div className={`p-5 rounded-2xl ${glassPanel} border-l-4 border-l-blue-500 flex items-center justify-between`}>
                 <div>
@@ -594,48 +609,54 @@ export default function Dashboard() {
                     </div>
                     
                     <div className="flex-1 overflow-y-auto space-y-3 pr-2 scroll-smooth">
-                      {dataTersaring.filter(i => i.status_logistik === col || (col === "Antrean" && i.status_logistik === "pickup")).map((item) => (
-                        <div 
-                          key={item.id} 
-                          draggable 
-                          onDragStart={(e) => handleDragStart(e, item.id)}
-                          onClick={() => setDetailPesanan(item)}
-                          className={`p-4 rounded-xl relative ${glassPanel} cursor-pointer hover:border-indigo-400/50 transition-all shadow-md group`}
-                        >
-                          <div className="flex justify-between items-start mb-2">
-                            <div>
-                              <div className="text-[10px] font-bold mb-1 opacity-60">#{item.id}</div>
-                              <h4 className="text-base font-bold leading-tight">{item.customer_name}</h4>
-                            </div>
-                            {item.tipe_layanan === 'satuan' && <span className="bg-purple-500/20 text-purple-300 text-[9px] font-bold px-2 py-1 rounded-md">SATUAN</span>}
-                          </div>
-                          
-                          <div className="text-[11px] bg-black/20 p-2 rounded-lg mb-2 border border-white/5 text-slate-300 font-medium">
-                            <span className="block text-indigo-300 font-bold mb-1">{item.paket_layanan}</span>
-                            🚚 {item.metode_pengiriman || "Driver"}
-                          </div>
-                          
-                          <div className="mt-3 border-t border-white/10 pt-3">
-                            <label className="text-[10px] opacity-60 mb-1 block md:hidden">Pindah Status (Tap untuk HP):</label>
-                            <label className="text-[10px] opacity-60 mb-1 hidden md:block">Pindah Status (Geser / Klik):</label>
-                            <select 
-                              value={item.status_logistik === 'pickup' ? 'Antrean' : item.status_logistik} 
-                              onChange={(e) => perbaruiStatusPesanan(item.id, e.target.value)} 
-                              onClick={(e) => e.stopPropagation()} 
-                              className="w-full bg-black/30 text-white text-xs p-1.5 rounded outline-none border border-white/10 cursor-pointer hover:bg-black/50 appearance-none"
-                            >
-                              {KANBAN_COLUMNS.map(c => <option key={c} value={c}>{c}</option>)}
-                            </select>
-                          </div>
+                      {dataTersaring.filter(i => i.status_logistik === col || (col === "Antrean" && i.status_logistik === "pickup")).map((item) => {
+                        // LOGIKA SMART ARROW (PANAH PINTAR)
+                        const currentIndex = KANBAN_COLUMNS.indexOf(item.status_logistik === 'pickup' ? 'Antrean' : item.status_logistik);
+                        const nextStatus = currentIndex !== -1 && currentIndex < KANBAN_COLUMNS.length - 1 ? KANBAN_COLUMNS[currentIndex + 1] : null;
 
-                          {col === "Siap Kirim" && (
-                            <button onClick={(e) => { e.stopPropagation(); bukaModalFoto(item.id, item.customer_name); }} className="w-full mt-3 bg-gradient-to-r from-emerald-600 to-green-600 text-white py-2 rounded-lg text-xs font-bold transition-all shadow border border-white/20">Selesaikan & Kirim Nota 🚀</button>
-                          )}
-                          {col === "selesai" && (
-                            <button onClick={(e) => { e.stopPropagation(); lihatFotoBukti(item.id); }} className="w-full mt-3 py-2 rounded-lg text-xs font-bold transition-all bg-white/5 border border-white/10 hover:bg-white/10">👁️ Cek Foto</button>
-                          )}
-                        </div>
-                      ))}
+                        return (
+                          <div 
+                            key={item.id} 
+                            draggable 
+                            onDragStart={(e) => handleDragStart(e, item.id)}
+                            onClick={() => setDetailPesanan(item)}
+                            className={`p-4 rounded-xl relative ${glassPanel} cursor-pointer hover:border-indigo-400/50 transition-all shadow-md group`}
+                          >
+                            <div className="flex justify-between items-start mb-2">
+                              <div>
+                                <div className="text-[10px] font-bold mb-1 opacity-60">#{item.id}</div>
+                                <h4 className="text-base font-bold leading-tight">{item.customer_name}</h4>
+                              </div>
+                              {item.tipe_layanan === 'satuan' && <span className="bg-purple-500/20 text-purple-300 text-[9px] font-bold px-2 py-1 rounded-md">SATUAN</span>}
+                            </div>
+                            
+                            <div className="text-[11px] bg-black/20 p-2 rounded-lg mb-2 border border-white/5 text-slate-300 font-medium">
+                              <span className="block text-indigo-300 font-bold mb-1">{item.paket_layanan}</span>
+                              🚚 {item.metode_pengiriman || "Driver"}
+                            </div>
+                            
+                            {/* AREA SMART ARROW PENGGANTI DROPDOWN */}
+                            <div className="mt-3 border-t border-white/10 pt-3">
+                              {col !== "Siap Kirim" && col !== "selesai" && nextStatus ? (
+                                <div className="flex justify-between items-center">
+                                  <span className="text-[10px] opacity-60">Langkah Berikutnya:</span>
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); perbaruiStatusPesanan(item.id, nextStatus); }}
+                                    className="bg-blue-600/30 text-blue-200 hover:bg-blue-600/50 border border-blue-500/40 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 active:scale-95 transition-all shadow-sm"
+                                  >
+                                    {nextStatus} <span className="text-base leading-none">➡️</span>
+                                  </button>
+                                </div>
+                              ) : col === "Siap Kirim" ? (
+                                <button onClick={(e) => { e.stopPropagation(); bukaModalFoto(item.id, item.customer_name); }} className="w-full bg-gradient-to-r from-emerald-600 to-green-600 text-white py-2.5 rounded-lg text-xs font-bold transition-all shadow-lg border border-white/20">📸 Selesaikan & Upload Bukti</button>
+                              ) : col === "selesai" ? (
+                                <button onClick={(e) => { e.stopPropagation(); lihatFotoBukti(item.id); }} className="w-full py-2 rounded-lg text-xs font-bold transition-all bg-white/5 border border-white/10 hover:bg-white/10">👁️ Cek Bukti Pengiriman</button>
+                              ) : null}
+                            </div>
+
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 ))}
@@ -712,7 +733,7 @@ export default function Dashboard() {
           MODAL POS PESANAN BARU (KALKULATOR & RINCIAN)
           ========================================== */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[60] p-4">
           <div className={`rounded-3xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh] ${glassPanel} border-white/20 shadow-2xl`}>
             <div className="bg-white/10 border-b border-white/10 p-5 flex justify-between items-center shrink-0">
               <h2 className="font-bold text-lg">🛍️ POS Kasir</h2>
@@ -777,7 +798,6 @@ export default function Dashboard() {
                     </div>
                   ))}
                 </div>
-                {formData.tipe_layanan === "satuan" && <p className="text-[10px] text-emerald-400 mt-3 text-center">*Total Pcs satuan akan otomatis dihitung dari rincian di atas.</p>}
               </div>
 
               <div className="grid grid-cols-2 gap-4 bg-white/5 p-4 rounded-2xl border border-white/5">
@@ -796,10 +816,27 @@ export default function Dashboard() {
                 <span className="text-2xl font-black text-emerald-400">Rp {formData.total_harga.toLocaleString("id-ID")}</span>
               </div>
 
+              <div className="border border-emerald-500/30 bg-emerald-900/10 rounded-2xl p-4">
+                <label className="block text-sm font-bold mb-3 text-emerald-300">📸 Bukti Pembayaran / Transfer</label>
+                {paymentPreviewUrl ? (
+                  <div className="mb-3 w-full h-32 bg-black/20 rounded-xl overflow-hidden border border-white/20 relative group">
+                    <img src={paymentPreviewUrl} alt="Preview Pembayaran" className="w-full h-full object-cover" />
+                    <input type="file" accept="image/*" capture="environment" onChange={handlePilihFotoPembayaran} className="absolute inset-0 opacity-0 cursor-pointer" />
+                  </div>
+                ) : (
+                  <div className="mb-3 w-full h-24 bg-white/5 rounded-xl border-2 border-dashed border-emerald-500/30 flex flex-col items-center justify-center text-emerald-400 hover:bg-emerald-500/10 transition-colors relative cursor-pointer">
+                    <span className="text-2xl mb-1">🧾</span>
+                    <span className="font-bold text-xs">Unggah Bukti Transfer / QRIS</span>
+                    <input type="file" accept="image/*" capture="environment" required onChange={handlePilihFotoPembayaran} className="absolute inset-0 opacity-0 cursor-pointer" />
+                  </div>
+                )}
+                <p className="text-[10px] opacity-70 text-center">Harus dilampirkan sebelum pesanan dapat disimpan.</p>
+              </div>
+
               <div className="pt-2 flex gap-3 shrink-0 pb-2">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 font-bold py-3 rounded-xl transition-all bg-white/5 hover:bg-white/10 border border-white/10">Batal</button>
                 <button type="submit" disabled={isSubmitting} className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 font-bold py-3 rounded-xl hover:opacity-90 transition-all disabled:opacity-50 border border-white/20 shadow-lg text-white">
-                  {isSubmitting ? "Menyimpan..." : "Simpan Pesanan 🧾"}
+                  {isSubmitting ? "Menyimpan..." : "Simpan & Kirim Nota 🚀"}
                 </button>
               </div>
             </form>
@@ -807,30 +844,30 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* MODAL KAMERA BUKTI PENGIRIMAN */}
+      {/* MODAL KAMERA BUKTI PENGIRIMAN (KUNCI PENYELESAIAN) */}
       {isPhotoModalOpen && selectedOrder && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[80] p-4">
           <div className={`rounded-3xl w-full max-w-sm overflow-hidden ${glassPanel} border-white/20 shadow-2xl text-white`}>
-            <div className="bg-white/10 border-b border-white/10 p-5 flex justify-between items-center">
-              <h2 className="font-bold text-lg">📸 Bukti Sampai</h2>
+            <div className="bg-red-500/20 border-b border-red-500/30 p-5 flex justify-between items-center">
+              <h2 className="font-bold text-lg text-red-200">📸 Wajib Bukti Sampai</h2>
               <button onClick={() => setIsPhotoModalOpen(false)} className="opacity-70 hover:opacity-100 text-2xl">×</button>
             </div>
             <form onSubmit={kirimBuktiSelesai} className="p-6 text-center">
-              <p className={`mb-6 text-sm text-gray-300`}>Upload foto tiba di lokasi <strong>{selectedOrder.customer_name}</strong></p>
+              <p className={`mb-4 text-xs text-red-300 font-medium`}>Kartu tertahan! Kamu harus mengirim foto bukti pengantaran/pickup untuk <strong>{selectedOrder.customer_name}</strong> agar pesanan berpindah ke status Selesai.</p>
               {livePreviewUrl ? (
                 <div className="mb-6 w-full aspect-square bg-black/20 rounded-2xl overflow-hidden border border-white/20 flex items-center justify-center relative group">
                   <img src={livePreviewUrl} alt="Preview" className="w-full h-full object-cover" />
-                  <input type="file" accept="image/*" capture="environment" onChange={handlePilihFoto} className="absolute inset-0 opacity-0 cursor-pointer" />
+                  <input type="file" accept="image/*" capture="environment" onChange={handlePilihFotoPengiriman} className="absolute inset-0 opacity-0 cursor-pointer" />
                 </div>
               ) : (
-                <div className="mb-6 w-full aspect-square bg-white/5 rounded-2xl border-2 border-dashed border-white/30 flex flex-col items-center justify-center text-indigo-400 hover:bg-white/10 transition-colors relative cursor-pointer">
-                  <span className="text-4xl mb-2">📱</span>
-                  <span className="font-bold text-sm">Ketuk Kamera</span>
-                  <input type="file" accept="image/*" capture="environment" required onChange={handlePilihFoto} className="absolute inset-0 opacity-0 cursor-pointer" />
+                <div className="mb-6 w-full aspect-square bg-white/5 rounded-2xl border-2 border-dashed border-red-500/50 flex flex-col items-center justify-center text-red-400 hover:bg-white/10 transition-colors relative cursor-pointer">
+                  <span className="text-4xl mb-2">📦</span>
+                  <span className="font-bold text-sm">Ambil Foto Paket</span>
+                  <input type="file" accept="image/*" capture="environment" required onChange={handlePilihFotoPengiriman} className="absolute inset-0 opacity-0 cursor-pointer" />
                 </div>
               )}
-              <button type="submit" disabled={isUploadingPhoto || !deliveryPhoto} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:opacity-90 text-white font-bold py-4 rounded-xl disabled:opacity-50 transition-all shadow-lg border border-white/20">
-                {isUploadingPhoto ? "🚀 Memproses..." : "Kirim Nota Akhir & Selesai"}
+              <button type="submit" disabled={isUploadingPhoto || !deliveryPhoto} className="w-full bg-gradient-to-r from-red-600 to-rose-600 hover:opacity-90 text-white font-bold py-4 rounded-xl disabled:opacity-50 transition-all shadow-lg border border-white/20">
+                {isUploadingPhoto ? "🚀 Memproses..." : "Buka Kunci & Selesaikan"}
               </button>
             </form>
           </div>

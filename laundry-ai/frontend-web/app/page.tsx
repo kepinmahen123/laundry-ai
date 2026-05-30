@@ -46,7 +46,7 @@ export default function Dashboard() {
   const [isExporting, setIsExporting] = useState(false); 
   const [showSuggestions, setShowSuggestions] = useState(false); 
   const [formData, setFormData] = useState({ 
-    customer_name: "", alamat_detail: "", jarak_ke_toko_km: "", berat_pesanan_kg: "", latitude: "", longitude: "" 
+    customer_name: "", alamat_detail: "", jarak_ke_toko_km: "", berat_pesanan_kg: "" 
   });
 
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
@@ -182,14 +182,16 @@ export default function Dashboard() {
         alamat_detail: formData.alamat_detail, 
         jarak_ke_toko_km: Number(formData.jarak_ke_toko_km), 
         berat_pesanan_kg: Number(formData.berat_pesanan_kg), 
-        latitude: Number(formData.latitude), 
-        longitude: Number(formData.longitude), 
         status_logistik: "pickup" 
       }
     ]);
     setIsSubmitting(false);
     if (error) alert("Gagal: " + error.message);
-    else { setIsModalOpen(false); setFormData({ customer_name: "", alamat_detail: "", jarak_ke_toko_km: "", berat_pesanan_kg: "", latitude: "", longitude: "" }); ambilData(); }
+    else { 
+      setIsModalOpen(false); 
+      setFormData({ customer_name: "", alamat_detail: "", jarak_ke_toko_km: "", berat_pesanan_kg: "" }); 
+      ambilData(); 
+    }
   }
 
  async function handleTambahCustomer(e: React.FormEvent) {
@@ -598,34 +600,79 @@ export default function Dashboard() {
             <form onSubmit={handleTambahPesanan} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
               <div className="relative">
                 <label className="block text-sm font-bold mb-1 opacity-80">Nama Pelanggan (Autofill)</label>
-                <input type="text" required value={formData.customer_name} onChange={(e) => { setFormData({...formData, customer_name: e.target.value}); setShowSuggestions(true); }} onFocus={() => setShowSuggestions(true)} onBlur={() => setTimeout(() => setShowSuggestions(false), 200)} className={`w-full py-3 px-4 rounded-xl outline-none transition-all ${glassInput}`} placeholder="Mulai ketik nama..." />
+                <input 
+                  type="text" 
+                  required 
+                  value={formData.customer_name} 
+                  onChange={(e) => { setFormData({...formData, customer_name: e.target.value}); setShowSuggestions(true); }} 
+                  onFocus={() => setShowSuggestions(true)} 
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 250)} 
+                  className={`w-full py-3 px-4 rounded-xl outline-none transition-all ${glassInput}`} 
+                  placeholder="Mulai ketik nama..." 
+                />
                 
+                {/* LIST SUGGESTION: Menggunakan onMouseDown agar langsung autofill tanpa interupsi */}
                 {showSuggestions && formData.customer_name && customers.filter(c => c.name.toLowerCase().includes(formData.customer_name.toLowerCase())).length > 0 && (
-                  <ul className={`absolute z-50 w-full mt-2 rounded-xl max-h-48 overflow-y-auto backdrop-blur-2xl bg-gray-900/80 border border-white/10 shadow-2xl text-white`}>
+                  <ul className="absolute z-50 w-full mt-2 rounded-xl max-h-48 overflow-y-auto backdrop-blur-2xl bg-gray-900/90 border border-white/10 shadow-2xl text-white">
                     {customers.filter(c => c.name.toLowerCase().includes(formData.customer_name.toLowerCase())).map(c => (
-                      <li key={c.id} onClick={() => { setFormData({...formData, customer_name: c.name, alamat_detail: c.alamat_detail, jarak_ke_toko_km: c.jarak_ke_toko_km, latitude: c.latitude, longitude: c.longitude}); setShowSuggestions(false); }} className={`px-4 py-3 cursor-pointer text-sm font-bold border-b border-white/5 last:border-b-0 hover:bg-white/10 transition-colors`}>
+                      <li 
+                        key={c.id} 
+                        onMouseDown={() => { 
+                          setFormData({
+                            ...formData, 
+                            customer_name: c.name, 
+                            alamat_detail: c.alamat_detail, 
+                            jarak_ke_toko_km: c.jarak_ke_toko_km
+                          }); 
+                          setShowSuggestions(false); 
+                        }} 
+                        className="px-4 py-3 cursor-pointer text-sm font-bold border-b border-white/5 last:border-b-0 hover:bg-white/10 transition-colors"
+                      >
                         {c.name} <span className="block text-xs font-normal opacity-60 truncate">{c.alamat_detail}</span>
                       </li>
                     ))}
                   </ul>
                 )}
               </div>
-              <div><label className="block text-sm font-bold mb-1 opacity-80">Alamat Lengkap</label><textarea required value={formData.alamat_detail} onChange={(e) => setFormData({...formData, alamat_detail: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} rows={2}></textarea></div>
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-bold mb-1 opacity-80">Jarak (KM)</label><input type="number" step="0.1" required value={formData.jarak_ke_toko_km} onChange={(e) => setFormData({...formData, jarak_ke_toko_km: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} /></div>
-                <div><label className="block text-sm font-bold mb-1 opacity-80">Berat (KG)</label><input type="number" step="0.1" required value={formData.berat_pesanan_kg} onChange={(e) => setFormData({...formData, berat_pesanan_kg: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} /></div>
+              <div>
+                <label className="block text-sm font-bold mb-1 opacity-80">Alamat Lengkap</label>
+                <textarea 
+                  required 
+                  value={formData.alamat_detail} 
+                  onChange={(e) => setFormData({...formData, alamat_detail: e.target.value})} 
+                  className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} 
+                  rows={2}
+                ></textarea>
               </div>
-              
-              <div className="border-t border-white/10 pt-4 mt-2">
-                <label className="block text-sm font-bold mb-3 text-indigo-500 dark:text-indigo-400">📍 Koordinat Maps</label>
-                <div className="grid grid-cols-2 gap-4">
-                  <div><label className="block text-xs font-bold mb-1 opacity-70">Latitude</label><input type="number" step="any" required value={formData.latitude} onChange={(e) => setFormData({...formData, latitude: e.target.value})} className={`w-full px-3 py-2 text-sm rounded-xl outline-none transition-all ${glassInput}`} /></div>
-                  <div><label className="block text-xs font-bold mb-1 opacity-70">Longitude</label><input type="number" step="any" required value={formData.longitude} onChange={(e) => setFormData({...formData, longitude: e.target.value})} className={`w-full px-3 py-2 text-sm rounded-xl outline-none transition-all ${glassInput}`} /></div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold mb-1 opacity-80">Jarak (KM)</label>
+                  <input 
+                    type="number" 
+                    step="0.1" 
+                    required 
+                    value={formData.jarak_ke_toko_km} 
+                    onChange={(e) => setFormData({...formData, jarak_ke_toko_km: e.target.value})} 
+                    className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} 
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold mb-1 opacity-80">Berat (KG)</label>
+                  <input 
+                    type="number" 
+                    step="0.1" 
+                    required 
+                    value={formData.berat_pesanan_kg} 
+                    onChange={(e) => setFormData({...formData, berat_pesanan_kg: e.target.value})} 
+                    className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} 
+                  />
                 </div>
               </div>
 
+              {/* Bagian Input Koordinat Maps (Latitude & Longitude) sudah dibersihkan sepenuhnya */}
+
               <div className="pt-4 flex gap-3">
-                <button type="button" onClick={() => setIsModalOpen(false)} className={`flex-1 font-bold py-3 rounded-xl transition-all bg-black/10 hover:bg-black/20 dark:bg-white/5 dark:hover:bg-white/10 border border-white/10`}>Batal</button>
+                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 font-bold py-3 rounded-xl transition-all bg-black/10 hover:bg-black/20 dark:bg-white/5 dark:hover:bg-white/10 border border-white/10">Batal</button>
                 <button type="submit" disabled={isSubmitting} className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 font-bold py-3 rounded-xl hover:opacity-90 transition-all disabled:opacity-50 border border-white/20 shadow-lg text-white">Simpan</button>
               </div>
             </form>

@@ -25,7 +25,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true); 
   
   const [filterStatus, setFilterStatus] = useState<string>("semua");
-  const [viewMode, setViewMode] = useState<string>("grid"); // Default langsung ke Kanban
+  const [viewMode, setViewMode] = useState<string>("grid");
   const [isDarkMode, setIsDarkMode] = useState(true); 
   const [activeMenu, setActiveMenu] = useState("Dashboard");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
@@ -49,10 +49,12 @@ export default function Dashboard() {
     customer_name: "", alamat_detail: "", jarak_ke_toko_km: "", berat_pesanan_kg: "", latitude: "", longitude: "",
     tipe_layanan: "kiloan", 
     paket_layanan: "Reguler (Cuci Kering Setrika Lipat)",
-    metode_pengiriman: "Diantar Driver Internal", // Baru ditambahkan
+    metode_pengiriman: "Diantar Driver Internal",
     harga_per_unit: "7000", 
     total_harga: 0
   });
+
+  const [detailPesanan, setDetailPesanan] = useState<any>(null);
 
   useEffect(() => {
     let jumlah = 0;
@@ -70,7 +72,9 @@ export default function Dashboard() {
     setRincianItem(prev => ({ ...prev, [itemKey]: Math.max(0, prev[itemKey as keyof typeof defaultRincian] + delta) }));
   };
 
-  // KANBAN DRAG & DROP LOGIC
+  // ==========================================
+  // KANBAN DRAG & DROP & NOTIFIKASI OTOMATIS
+  // ==========================================
   const KANBAN_COLUMNS = ["Antrean", "Sedang Dicuci", "Disetrika", "Packing", "Siap Kirim", "selesai"];
   const [draggedOrderId, setDraggedOrderId] = useState<number | null>(null);
 
@@ -88,11 +92,50 @@ export default function Dashboard() {
   };
 
   const perbaruiStatusPesanan = async (id: number, newStatus: string) => {
-    setPesanan(prev => prev.map(p => p.id === id ? { ...p, status_logistik: newStatus } : p)); // Optimistic Update UI
+    // 1. Ambil data pesanan saat ini sebelum diubah
+    const orderLama = pesanan.find(p => p.id === id);
+    if (!orderLama) return;
+
+    // 2. Update UI seketika (Optimistic UI)
+    setPesanan(prev => prev.map(p => p.id === id ? { ...p, status_logistik: newStatus } : p));
+    
+    // 3. Update Database Supabase
     const { error } = await supabase.from("orders").update({ status_logistik: newStatus }).eq("id", id);
-    if (error) {
-      alert("Gagal memperbarui status!");
-      ambilData(); // Revert back jika gagal
+    if (error) { 
+      alert("Gagal memperbarui status!"); 
+      ambilData(); 
+      return;
+    }
+
+    // 4. CEK NOTIFIKASI: Jika kartu baru masuk ke "Siap Kirim" dari status lain
+    if (newStatus === "Siap Kirim" && orderLama.status_logistik !== "Siap Kirim") {
+      kirimNotifSiapKirim(orderLama);
+    }
+  };
+
+  // Fungsi menembak notif "Siap Kirim" berdasarkan Metode Pengiriman
+  const kirimNotifSiapKirim = async (order: any) => {
+    let teksNotif = "";
+    
+    if (order.metode_pengiriman === "Diantar Driver Internal") {
+      teksNotif = `✨ *HALO ${order.customer_name}* ✨\n\nKabar gembira! Cucian kamu (Nota #${order.id}) sudah selesai diproses hingga bersih, wangi, dan rapi! 🧺✨\n\n🛵 Saat ini cucian kamu berada di status *Siap Kirim*. Driver kami akan segera meluncur untuk mengantarkan paket ini ke alamatmu. Mohon ditunggu ya! 🙏`;
+    } else if (order.metode_pengiriman === "Pickup di Toko Sendiri") {
+      teksNotif = `✨ *HALO ${order.customer_name}* ✨\n\nKabar gembira! Cucian kamu (Nota #${order.id}) sudah selesai diproses dan *SIAP DIAMBIL* di toko kami! 🏪✨\n\nSilakan mampir kapan saja pada jam operasional kami untuk mengambil cuciannya. Terima kasih telah mempercayakan LaundroAI! 🙏`;
+    } else if (order.metode_pengiriman === "GoSend / GrabExpress") {
+      teksNotif = `✨ *HALO ${order.customer_name}* ✨\n\nKabar gembira! Cucian kamu (Nota #${order.id}) sudah selesai diproses dan dipacking rapi! 📦✨\n\nSaat ini pesanan berstatus *Siap Kirim* via GoSend / GrabExpress. Kami sedang menyiapkan driver untuk mengambil paketnya. Kakak bisa menunggu di lokasi. Terima kasih! 🙏`;
+    } else {
+      teksNotif = `✨ *HALO ${order.customer_name}* ✨\n\nCucian kamu (Nota #${order.id}) sudah selesai dan berstatus *Siap Kirim*! Terima kasih! 🙏`;
+    }
+
+    try {
+      await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, text: teksNotif, parse_mode: "Markdown" })
+      });
+      console.log("Notifikasi Siap Kirim berhasil ditembakkan!");
+    } catch (err) {
+      console.error("Gagal mengirim notif siap kirim:", err);
     }
   };
 
@@ -168,7 +211,7 @@ export default function Dashboard() {
     try {
       const { error } = await supabase.from("orders").update({ status_logistik: "selesai" }).eq("id", selectedOrder.id);
       if (error) throw new Error(error.message);
-      setPesanan(prev => prev.map(p => p.id === selectedOrder.id ? { ...p, status_logistik: "selesai" } : p)); // Update lokal
+      setPesanan(prev => prev.map(p => p.id === selectedOrder.id ? { ...p, status_logistik: "selesai" } : p)); 
 
       const sekarang = new Date();
       const opsiOtomatis: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' };
@@ -207,7 +250,7 @@ export default function Dashboard() {
           harga_per_unit: Number(formData.harga_per_unit),
           total_harga: formData.total_harga,
           rincian_item: rincianItem,
-          status_logistik: "Antrean" // Default baru disesuaikan kanban
+          status_logistik: "Antrean" 
         }
       ]);
       
@@ -417,9 +460,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* ==========================================
-                AREA RENDER (KANBAN BOARD ATAU TABEL)
-                ========================================== */}
             {dataTersaring.length === 0 ? (
               <div className={`rounded-3xl p-16 text-center ${glassPanel} my-auto`}><div className="text-5xl mb-4 opacity-50">📭</div><h3 className="text-xl font-bold mb-2">Tidak ada aktivitas</h3><p className={textMuted}>Belum ada data pesanan pada tanggal ini.</p></div>
             ) : viewMode === "table" ? (
@@ -430,7 +470,7 @@ export default function Dashboard() {
                   </thead>
                   <tbody className={`divide-y ${isDarkMode ? 'divide-white/5' : 'divide-black/5'}`}>
                     {dataTersaring.map((item) => (
-                      <tr key={item.id} className={`transition-colors ${rowHover}`}>
+                      <tr key={item.id} onClick={() => setDetailPesanan(item)} className={`transition-colors cursor-pointer ${rowHover}`}>
                         <td className="p-5 min-w-[150px]">
                           <div className="text-xs font-bold mb-1 opacity-60">#{item.id}</div><div className="font-bold">{item.customer_name}</div>
                           <div className={`text-xs mt-1 font-medium ${textMuted}`}>{item.created_at ? new Date(item.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : "-"} WIB</div>
@@ -447,9 +487,9 @@ export default function Dashboard() {
                         </td>
                         <td className="p-5 text-center align-middle min-w-[150px]">
                           {item.status_logistik === 'Siap Kirim' ? (
-                            <button onClick={() => bukaModalFoto(item.id, item.customer_name)} className="bg-gradient-to-r from-emerald-600 to-green-600 hover:opacity-80 text-white px-4 py-2 rounded-xl text-xs md:text-sm font-bold shadow-lg transition-all active:scale-95 whitespace-nowrap border border-white/20">Selesaikan 🚀</button>
+                            <button onClick={(e) => { e.stopPropagation(); bukaModalFoto(item.id, item.customer_name); }} className="bg-gradient-to-r from-emerald-600 to-green-600 hover:opacity-80 text-white px-4 py-2 rounded-xl text-xs md:text-sm font-bold shadow-lg transition-all active:scale-95 whitespace-nowrap border border-white/20">Selesaikan 🚀</button>
                           ) : item.status_logistik === 'selesai' ? (
-                            <button onClick={() => lihatFotoBukti(item.id)} className={`text-xs font-bold px-3 py-2 rounded-lg transition-all ${glassPanel} hover:bg-white/10`}>👁️ Cek Foto</button>
+                            <button onClick={(e) => { e.stopPropagation(); lihatFotoBukti(item.id); }} className={`text-xs font-bold px-3 py-2 rounded-lg transition-all ${glassPanel} hover:bg-white/10`}>👁️ Cek Foto</button>
                           ) : (
                             <div className="text-xs opacity-50">Berjalan...</div>
                           )}
@@ -482,7 +522,8 @@ export default function Dashboard() {
                           key={item.id} 
                           draggable 
                           onDragStart={(e) => handleDragStart(e, item.id)}
-                          className={`p-4 rounded-xl relative ${glassPanel} cursor-grab active:cursor-grabbing hover:border-indigo-400/50 transition-all shadow-md group`}
+                          onClick={() => setDetailPesanan(item)}
+                          className={`p-4 rounded-xl relative ${glassPanel} cursor-pointer hover:border-indigo-400/50 transition-all shadow-md group`}
                         >
                           <div className="flex justify-between items-start mb-2">
                             <div>
@@ -497,25 +538,24 @@ export default function Dashboard() {
                             🚚 {item.metode_pengiriman || "Driver"}
                           </div>
                           
-                          {/* FALLBACK DROPDOWN UNTUK HP */}
                           <div className="mt-3 border-t border-white/10 pt-3">
                             <label className="text-[10px] opacity-60 mb-1 block md:hidden">Pindah Status (Tap untuk HP):</label>
                             <label className="text-[10px] opacity-60 mb-1 hidden md:block">Pindah Status (Geser / Klik):</label>
                             <select 
                               value={item.status_logistik === 'pickup' ? 'Antrean' : item.status_logistik} 
                               onChange={(e) => perbaruiStatusPesanan(item.id, e.target.value)} 
+                              onClick={(e) => e.stopPropagation()} 
                               className="w-full bg-black/30 text-white text-xs p-1.5 rounded outline-none border border-white/10 cursor-pointer hover:bg-black/50 appearance-none"
                             >
                               {KANBAN_COLUMNS.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                           </div>
 
-                          {/* TOMBOL AKSI AKHIR */}
                           {col === "Siap Kirim" && (
-                            <button onClick={() => bukaModalFoto(item.id, item.customer_name)} className="w-full mt-3 bg-gradient-to-r from-emerald-600 to-green-600 text-white py-2 rounded-lg text-xs font-bold transition-all shadow border border-white/20">Selesaikan & Kirim Nota 🚀</button>
+                            <button onClick={(e) => { e.stopPropagation(); bukaModalFoto(item.id, item.customer_name); }} className="w-full mt-3 bg-gradient-to-r from-emerald-600 to-green-600 text-white py-2 rounded-lg text-xs font-bold transition-all shadow border border-white/20">Selesaikan & Kirim Nota 🚀</button>
                           )}
                           {col === "selesai" && (
-                            <button onClick={() => lihatFotoBukti(item.id)} className="w-full mt-3 py-2 rounded-lg text-xs font-bold transition-all bg-white/5 border border-white/10 hover:bg-white/10">👁️ Cek Foto</button>
+                            <button onClick={(e) => { e.stopPropagation(); lihatFotoBukti(item.id); }} className="w-full mt-3 py-2 rounded-lg text-xs font-bold transition-all bg-white/5 border border-white/10 hover:bg-white/10">👁️ Cek Foto</button>
                           )}
                         </div>
                       ))}
@@ -527,6 +567,69 @@ export default function Dashboard() {
           </div>
         )}
       </main>
+
+      {/* ==========================================
+          MODAL DETAIL PESANAN (POPUP GLASS)
+          ========================================== */}
+      {detailPesanan && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[70] p-4" onClick={() => setDetailPesanan(null)}>
+          <div className={`rounded-3xl w-full max-w-lg overflow-hidden flex flex-col max-h-[85vh] ${glassPanel} border-white/20 shadow-2xl`} onClick={(e) => e.stopPropagation()}>
+            <div className="bg-white/10 border-b border-white/10 p-5 flex justify-between items-center shrink-0">
+              <h2 className="font-bold text-lg flex items-center gap-2">📄 Detail Pesanan <span className="bg-white/20 text-xs px-2 py-1 rounded-md">#{detailPesanan.id}</span></h2>
+              <button onClick={() => setDetailPesanan(null)} className="opacity-70 hover:opacity-100 text-2xl active:scale-90">×</button>
+            </div>
+            <div className="p-6 overflow-y-auto flex-1 space-y-5">
+              <div className="flex justify-between items-start border-b border-white/10 pb-4">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider opacity-60 font-bold mb-1">Nama Pelanggan</p>
+                  <h3 className="text-2xl font-black text-indigo-300">{detailPesanan.customer_name}</h3>
+                </div>
+                <span className={`px-3 py-1 font-bold rounded-lg text-[10px] tracking-wider uppercase border ${detailPesanan.status_logistik === 'selesai' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'}`}>
+                  {detailPesanan.status_logistik}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-black/20 p-3 rounded-xl border border-white/5">
+                  <p className="text-[10px] opacity-60 font-bold mb-1">Layanan & Paket</p>
+                  <p className="text-xs font-bold text-emerald-400">{detailPesanan.tipe_layanan?.toUpperCase() || "KILOAN"}</p>
+                  <p className="text-xs opacity-90 mt-0.5">{detailPesanan.paket_layanan}</p>
+                </div>
+                <div className="bg-black/20 p-3 rounded-xl border border-white/5">
+                  <p className="text-[10px] opacity-60 font-bold mb-1">Metode Pengiriman</p>
+                  <p className="text-xs font-bold">🚚 {detailPesanan.metode_pengiriman || "Driver"}</p>
+                </div>
+              </div>
+              <div className="bg-black/20 p-3 rounded-xl border border-white/5">
+                <p className="text-[10px] opacity-60 font-bold mb-1">Alamat Tujuan & Jarak</p>
+                <p className="text-sm font-medium leading-relaxed opacity-90">{detailPesanan.alamat_detail}</p>
+                <p className="text-xs font-bold text-indigo-400 mt-2">🛵 {detailPesanan.jarak_ke_toko_km} KM</p>
+              </div>
+              <div className="bg-black/20 p-4 rounded-xl border border-white/5 space-y-3">
+                <h4 className="text-xs font-bold opacity-60 border-b border-white/10 pb-2">Rincian Pembayaran</h4>
+                <div className="flex justify-between items-center text-sm"><span className="opacity-80">Berat / Qty:</span><span className="font-bold">{detailPesanan.berat_pesanan_kg} {detailPesanan.tipe_layanan === 'satuan' ? 'Pcs' : 'KG'}</span></div>
+                <div className="flex justify-between items-center text-sm"><span className="opacity-80">Harga per Unit:</span><span className="font-bold">Rp {Number(detailPesanan.harga_per_unit || 0).toLocaleString("id-ID")}</span></div>
+                <div className="flex justify-between items-center pt-3 border-t border-white/10"><span className="font-bold text-indigo-300">Total Harga:</span><span className="text-xl font-black text-emerald-400">Rp {Number(detailPesanan.total_harga || 0).toLocaleString("id-ID")}</span></div>
+              </div>
+              {detailPesanan.rincian_item && (
+                <div className="bg-black/20 p-4 rounded-xl border border-white/5">
+                  <h4 className="text-xs font-bold opacity-60 border-b border-white/10 pb-2 mb-3">Item Pakaian (Opsional)</h4>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    {Object.entries(detailPesanan.rincian_item).map(([key, value]) => {
+                      if (Number(value) > 0) {
+                        const namaRapih = key.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+                        return <div key={key} className="flex justify-between border-b border-white/5 pb-1"><span className="opacity-80">{namaRapih}:</span><span className="font-bold text-indigo-300">{value as React.ReactNode}</span></div>;
+                      }
+                      return null;
+                    })}
+                    {Object.values(detailPesanan.rincian_item).every(val => Number(val) === 0) && <span className="opacity-50 italic col-span-2 text-center">Tidak ada rincian khusus yang dicatat.</span>}
+                  </div>
+                </div>
+              )}
+              <div className="text-center"><p className="text-[10px] opacity-40">Dibuat pada: {detailPesanan.created_at ? new Date(detailPesanan.created_at).toLocaleString('id-ID') : "-"}</p></div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ==========================================
           MODAL POS PESANAN BARU (KALKULATOR & RINCIAN)
@@ -555,7 +658,6 @@ export default function Dashboard() {
                 </select>
               </div>
 
-              {/* INPUT METODE PENGIRIMAN */}
               <div>
                 <label className="block text-sm font-bold mb-1 opacity-80">Metode Pengiriman</label>
                 <select value={formData.metode_pengiriman} onChange={(e) => setFormData({...formData, metode_pengiriman: e.target.value})} className={`w-full py-3 px-4 rounded-xl outline-none transition-all appearance-none cursor-pointer ${glassInput}`}>
@@ -658,7 +760,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* MODAL LAINNYA DIBAWAH TETAP AMAN (CUSTOMER / PREVIEW BUKTI) */}
+      {/* MODAL TAMBAH CUSTOMER BARU */}
       {isCustomerModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className={`rounded-3xl w-full max-w-md overflow-hidden ${glassPanel} border-white/20 shadow-2xl`}>
@@ -679,6 +781,7 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* MODAL PREVIEW FOTO */}
       {isPreviewOpen && (
         <div className="fixed inset-0 bg-black/95 backdrop-blur-xl flex items-center justify-center z-[60] p-4">
           <div className="w-full max-w-lg relative flex flex-col items-center">

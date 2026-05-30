@@ -19,35 +19,29 @@ const mapContainerStyle = { width: "100%", height: "600px", borderRadius: "16px"
 export default function Dashboard() {
   const router = useRouter();
 
-  // 1. STATE UTAMA
   const [pesanan, setPesanan] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]); 
   const [session, setSession] = useState<any>(null); 
   const [loading, setLoading] = useState(true); 
   
-  // 2. STATE UI & LAYOUT
   const [filterStatus, setFilterStatus] = useState<string>("semua");
-  const [viewMode, setViewMode] = useState<string>("table");
+  const [viewMode, setViewMode] = useState<string>("grid"); // Default langsung ke Kanban
   const [isDarkMode, setIsDarkMode] = useState(true); 
   const [activeMenu, setActiveMenu] = useState("Dashboard");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
   const [completionDate, setCompletionDate] = useState<string | null>(null); 
   
-  // 3. STATE FILTER & SORT
   const [sortBy, setSortBy] = useState<"terbaru" | "terdekat">("terbaru");
   const [filterTanggal, setFilterTanggal] = useState<string>(() => {
     const d = new Date();
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }); 
 
-  // ==========================================
-  // FITUR 1: POS & PESANAN BARU (UPDATE)
-  // ==========================================
+  // STATE FORM & POS
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false); 
   
-  // STATE RINCIAN BARANG KHUSUS (- / +)
   const defaultRincian = { baju: 0, celana: 0, kemeja: 0, jaket: 0, celana_dalam: 0, kaos_kaki: 0, dasi: 0 };
   const [rincianItem, setRincianItem] = useState(defaultRincian);
 
@@ -55,11 +49,11 @@ export default function Dashboard() {
     customer_name: "", alamat_detail: "", jarak_ke_toko_km: "", berat_pesanan_kg: "", latitude: "", longitude: "",
     tipe_layanan: "kiloan", 
     paket_layanan: "Reguler (Cuci Kering Setrika Lipat)",
+    metode_pengiriman: "Diantar Driver Internal", // Baru ditambahkan
     harga_per_unit: "7000", 
     total_harga: 0
   });
 
-  // LOGIKA MATEMATIS POS OTOMATIS
   useEffect(() => {
     let jumlah = 0;
     if (formData.tipe_layanan === "satuan") {
@@ -76,16 +70,36 @@ export default function Dashboard() {
     setRincianItem(prev => ({ ...prev, [itemKey]: Math.max(0, prev[itemKey as keyof typeof defaultRincian] + delta) }));
   };
 
-  // ==========================================
-  // FITUR 2: TAMBAH DATABASE CUSTOMER
-  // ==========================================
+  // KANBAN DRAG & DROP LOGIC
+  const KANBAN_COLUMNS = ["Antrean", "Sedang Dicuci", "Disetrika", "Packing", "Siap Kirim", "selesai"];
+  const [draggedOrderId, setDraggedOrderId] = useState<number | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, id: number) => {
+    e.dataTransfer.setData("text/plain", id.toString());
+    setDraggedOrderId(id);
+  };
+
+  const handleDrop = async (e: React.DragEvent, newStatus: string) => {
+    e.preventDefault();
+    const idStr = e.dataTransfer.getData("text/plain");
+    if (!idStr) return;
+    const id = Number(idStr);
+    perbaruiStatusPesanan(id, newStatus);
+  };
+
+  const perbaruiStatusPesanan = async (id: number, newStatus: string) => {
+    setPesanan(prev => prev.map(p => p.id === id ? { ...p, status_logistik: newStatus } : p)); // Optimistic Update UI
+    const { error } = await supabase.from("orders").update({ status_logistik: newStatus }).eq("id", id);
+    if (error) {
+      alert("Gagal memperbarui status!");
+      ambilData(); // Revert back jika gagal
+    }
+  };
+
+  // KAMERA & DATA LAINNYA
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [isSubmittingCustomer, setIsSubmittingCustomer] = useState(false);
   const [customerFormData, setCustomerFormData] = useState({ name: "", alamat_detail: "", jarak_ke_toko_km: "" });
-
-  // ==========================================
-  // FITUR 3: KAMERA & BUKTI PENGIRIMAN
-  // ==========================================
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [deliveryPhoto, setDeliveryPhoto] = useState<File | null>(null);
@@ -94,16 +108,11 @@ export default function Dashboard() {
   const [buktiFotoUrls, setBuktiFotoUrls] = useState<{[key: number]: string}>({});
   const [previewTargetUrl, setPreviewTargetUrl] = useState<string>("");
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-
-  // LAIN-LAIN
   const [isExporting, setIsExporting] = useState(false); 
   const [timerTick, setTimerTick] = useState(0);
   const { isLoaded: isMapLoaded } = useJsApiLoader({ id: 'google-map-script', googleMapsApiKey: GOOGLE_MAPS_API_KEY });
   const [selectedMarker, setSelectedMarker] = useState<any>(null);
 
-  // ==========================================
-  // SIKLUS HIDUP & AMBIL DATA
-  // ==========================================
   useEffect(() => {
     async function cekKeamanan() {
       const { data: { session } } = await supabase.auth.getSession();
@@ -122,7 +131,6 @@ export default function Dashboard() {
   async function ambilData() {
     const { data: ordersData } = await supabase.from("orders").select("*").order("id", { ascending: false });
     if (Array.isArray(ordersData)) setPesanan(ordersData);
-
     const { data: customersData } = await supabase.from("customers").select("*").order("name", { ascending: true });
     if (Array.isArray(customersData)) setCustomers(customersData);
   }
@@ -132,23 +140,6 @@ export default function Dashboard() {
     router.push("/login");
   }
 
-  function hitungWaktuTunggu(waktuDibuat: string) {
-    if (!waktuDibuat) return "-";
-    const sekarang = new Date();
-    const dibuat = new Date(waktuDibuat);
-    const selisihMs = Math.max(0, sekarang.getTime() - dibuat.getTime());
-    const selisihMenitTotal = Math.floor(selisihMs / (1000 * 60));
-    if (selisihMenitTotal < 60) return `${selisihMenitTotal} mnt lalu`;
-    const selisihJam = Math.floor(selisihMenitTotal / 60);
-    const sisaMenit = selisihMenitTotal % 60;
-    if (selisihJam < 24) return `${selisihJam}j ${sisaMenit}m lalu`;
-    const selisihHari = Math.floor(selisihJam / 24);
-    return `${selisihHari} hari lalu`;
-  }
-
-  // ==========================================
-  // FUNGSI PENGIRIMAN & FOTO BUKTI
-  // ==========================================
   function bukaModalFoto(id: number, nama: string) {
     setSelectedOrder({ id, customer_name: nama });
     setDeliveryPhoto(null); setLivePreviewUrl(null); setIsPhotoModalOpen(true);
@@ -177,13 +168,13 @@ export default function Dashboard() {
     try {
       const { error } = await supabase.from("orders").update({ status_logistik: "selesai" }).eq("id", selectedOrder.id);
       if (error) throw new Error(error.message);
+      setPesanan(prev => prev.map(p => p.id === selectedOrder.id ? { ...p, status_logistik: "selesai" } : p)); // Update lokal
 
       const sekarang = new Date();
       const opsiOtomatis: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' };
       const waktuSelesai = sekarang.toLocaleDateString('id-ID', opsiOtomatis) + ' WIB';
-      setCompletionDate(waktuSelesai);
 
-      const pesanCaption = `✅ *PESANAN SELESAI*\n\nHalo kak ${selectedOrder.customer_name}! Cucian kamu sudah selesai diproses dan tiba di lokasi.\n🕒 *Waktu Selesai:* ${waktuSelesai}\n📦 Terima kasih!`;
+      const pesanCaption = `✅ *PESANAN SELESAI*\n\nHalo kak ${selectedOrder.customer_name}! Cucian kamu sudah selesai diproses dan tiba di lokasi.\n🕒 *Waktu Selesai:* ${waktuSelesai}\n📦 Terima kasih sudah mempercayakan kami sebagai tempat laundry Anda.`;
       const fileData = new FormData();
       fileData.append("chat_id", chatId); fileData.append("photo", deliveryPhoto); fileData.append("caption", pesanCaption); fileData.append("parse_mode", "Markdown");
 
@@ -193,19 +184,15 @@ export default function Dashboard() {
     } catch (err) { 
       alert("Gagal memproses penyelesaian pesanan."); 
     } finally {
-      setIsUploadingPhoto(false); setIsPhotoModalOpen(false); setSelectedOrder(null); setDeliveryPhoto(null); ambilData(); 
+      setIsUploadingPhoto(false); setIsPhotoModalOpen(false); setSelectedOrder(null); setDeliveryPhoto(null);
     }
   }
 
-  // ==========================================
-  // FUNGSI SIMPAN DATA & KIRIM NOTA KE TELEGRAM
-  // ==========================================
   async function handleTambahPesanan(e: React.FormEvent) {
     e.preventDefault();
     setIsSubmitting(true);
     
     try {
-      // 1. Simpan ke Database Supabase
       const { error } = await supabase.from("orders").insert([
         { 
           customer_name: formData.customer_name, 
@@ -216,16 +203,16 @@ export default function Dashboard() {
           longitude: formData.longitude ? Number(formData.longitude) : null, 
           tipe_layanan: formData.tipe_layanan,
           paket_layanan: formData.paket_layanan,
+          metode_pengiriman: formData.metode_pengiriman,
           harga_per_unit: Number(formData.harga_per_unit),
           total_harga: formData.total_harga,
           rincian_item: rincianItem,
-          status_logistik: "pickup" 
+          status_logistik: "Antrean" // Default baru disesuaikan kanban
         }
       ]);
       
       if (error) throw new Error(error.message);
 
-      // 2. Siapkan Rincian Pakaian
       const listRincian = [];
       if (rincianItem.baju > 0) listRincian.push(`- 👕 Baju: ${rincianItem.baju}`);
       if (rincianItem.celana > 0) listRincian.push(`- 👖 Celana: ${rincianItem.celana}`);
@@ -235,11 +222,8 @@ export default function Dashboard() {
       if (rincianItem.kaos_kaki > 0) listRincian.push(`- 🧦 Kaos Kaki: ${rincianItem.kaos_kaki}`);
       if (rincianItem.dasi > 0) listRincian.push(`- 👔 Dasi: ${rincianItem.dasi}`);
       
-      const teksRincian = listRincian.length > 0 
-        ? `\n\n📝 *Rincian Pakaian:*\n${listRincian.join("\n")}` 
-        : "";
+      const teksRincian = listRincian.length > 0 ? `\n\n📝 *Rincian Pakaian:*\n${listRincian.join("\n")}` : "";
 
-      // 3. Susun Format Struk Nota (E-Receipt)
       const notaDigital = `🧾 *NOTA PESANAN LAUNDROAI* 🧾
 -----------------------------------------
 👤 *Pelanggan:* ${formData.customer_name}
@@ -247,31 +231,26 @@ export default function Dashboard() {
 📦 *Paket:* ${formData.paket_layanan}
 📍 *Alamat:* ${formData.alamat_detail}
 🛵 *Jarak:* ${formData.jarak_ke_toko_km} KM
+🚚 *Pengiriman:* ${formData.metode_pengiriman}
 -----------------------------------------
 ⚖️ *Berat / Qty:* ${formData.berat_pesanan_kg} ${formData.tipe_layanan === 'satuan' ? 'Pcs' : 'KG'}
 💵 *Harga per ${formData.tipe_layanan === 'satuan' ? 'Pcs' : 'KG'}:* Rp ${Number(formData.harga_per_unit).toLocaleString('id-ID')}${teksRincian}
 -----------------------------------------
 💰 *TOTAL BAYAR: Rp ${formData.total_harga.toLocaleString('id-ID')}*
 -----------------------------------------
-🙏 _Terima kasih sudah mempercayakan LaundroAI kami sebagai tempat laundry anda._`;
+🙏 _Terima kasih sudah mempercayakan kami sebagai tempat laundry anda...._`;
 
-      // 4. Tembakkan Nota ke Telegram
       await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: notaDigital,
-          parse_mode: "Markdown"
-        })
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, text: notaDigital, parse_mode: "Markdown" })
       });
 
-      // 5. Berhasil & Bersihkan Form
       setIsModalOpen(false); 
       setFormData({ 
         customer_name: "", alamat_detail: "", jarak_ke_toko_km: "", berat_pesanan_kg: "", 
         latitude: "", longitude: "", tipe_layanan: "kiloan", 
-        paket_layanan: "Reguler (Cuci Kering Setrika Lipat)", harga_per_unit: "7000", total_harga: 0 
+        paket_layanan: "Reguler (Cuci Kering Setrika Lipat)", metode_pengiriman: "Diantar Driver Internal", 
+        harga_per_unit: "7000", total_harga: 0 
       }); 
       setRincianItem(defaultRincian); 
       ambilData(); 
@@ -290,29 +269,26 @@ export default function Dashboard() {
       { name: customerFormData.name, alamat_detail: customerFormData.alamat_detail, jarak_ke_toko_km: Number(customerFormData.jarak_ke_toko_km) }
     ]);
     setIsSubmittingCustomer(false);
-    if (error) alert("Gagal menyimpan data pelanggan. Error: " + error.message);
+    if (error) alert("Gagal. Error: " + error.message);
     else { setIsCustomerModalOpen(false); setCustomerFormData({ name: "", alamat_detail: "", jarak_ke_toko_km: "" }); ambilData(); }
   }
 
   async function generateDanKirimLaporan() {
     setIsExporting(true);
     try {
-      let barisCsv = "ID Pesanan,Tanggal,Nama Pelanggan,Paket,Berat/Qty,Total Harga,Status Logistik\n";
+      let barisCsv = "ID Pesanan,Tanggal,Nama Pelanggan,Paket,Pengiriman,Berat/Qty,Total Harga,Status Logistik\n";
       dataTersaring.forEach((item) => {
         const d = item.created_at ? new Date(item.created_at) : new Date();
         const tgl = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-        barisCsv += `${item.id || "-"},${tgl},${String(item.customer_name || "-").replace(/,/g, " ")},${item.paket_layanan || "-"},${item.berat_pesanan_kg || "0"},${item.total_harga || "0"},${item.status_logistik || "-"}\n`;
+        barisCsv += `${item.id || "-"},${tgl},${String(item.customer_name || "-").replace(/,/g, " ")},${item.paket_layanan || "-"},${item.metode_pengiriman || "-"},${item.berat_pesanan_kg || "0"},${item.total_harga || "0"},${item.status_logistik || "-"}\n`;
       });
       const blob = new Blob([barisCsv], { type: "text/csv;charset=utf-8;" });
       const fileLaporan = new FormData();
-      fileLaporan.append("chat_id", chatId);
-      fileLaporan.append("document", blob, `Laporan_Laundry_${filterTanggal || "Semua_Waktu"}.csv`);
+      fileLaporan.append("chat_id", chatId); fileLaporan.append("document", blob, `Laporan_${filterTanggal || "Semua"}.csv`);
       fileLaporan.append("caption", `📊 REKAP LAPORAN LOGISTIK\n\nTotal Data: ${dataTersaring.length} pesanan.`);
-      
-      const respon = await fetch(`https://api.telegram.org/bot${telegramToken}/sendDocument`, { method: "POST", body: fileLaporan });
-      if (respon.ok) alert("Laporan Excel berhasil dikirim ke Telegram! 🚀");
-    } catch (err) { alert("Terjadi kesalahan sistem saat membuat laporan."); } 
-    finally { setIsExporting(false); }
+      await fetch(`https://api.telegram.org/bot${telegramToken}/sendDocument`, { method: "POST", body: fileLaporan });
+      alert("Laporan Excel berhasil dikirim ke Telegram! 🚀");
+    } catch (err) { alert("Kesalahan sistem."); } finally { setIsExporting(false); }
   }
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4 mx-auto"></div></div>;
@@ -331,9 +307,6 @@ export default function Dashboard() {
   const totalAntreanAktif = dataTersaring.filter((item) => item.status_logistik !== "selesai").length;
   const totalBeratTersaring = dataTersaring.reduce((acc, item) => acc + Number(item.berat_pesanan_kg || 0), 0);
 
-  // ==========================================
-  // THEME & STYLING GLASSMORPHISM
-  // ==========================================
   const dynamicBg = isDarkMode ? "bg-gradient-to-br from-indigo-950 via-gray-900 to-purple-950 text-white" : "bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-100 text-gray-900";
   const glassPanel = isDarkMode ? "bg-white/5 backdrop-blur-xl border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.3)]" : "bg-white/40 backdrop-blur-xl border border-white/50 shadow-[0_8px_32px_0_rgba(31,38,135,0.1)]";
   const glassInput = isDarkMode ? "bg-black/20 border border-white/10 text-white placeholder-gray-400 focus:bg-black/40 focus:border-indigo-400" : "bg-white/50 border border-white/60 text-gray-900 placeholder-gray-500 focus:bg-white/80 focus:border-indigo-400";
@@ -421,51 +394,39 @@ export default function Dashboard() {
             )}
           </div>
         ) : (
-          <div className="max-w-7xl mx-auto">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-              <div><h1 className="text-3xl font-extrabold tracking-tight">Ringkasan Operasional</h1><p className={`text-sm mt-1 ${textMuted}`}>Pantau pergerakan kurir dan selesaikan pesanan.</p></div>
+          <div className="max-w-7xl mx-auto flex flex-col h-full">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 shrink-0">
+              <div><h1 className="text-3xl font-extrabold tracking-tight">Papan Operasional</h1><p className={`text-sm mt-1 ${textMuted}`}>Pantau dan geser kartu cucian secara langsung.</p></div>
               <button onClick={() => setIsModalOpen(true)} className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-5 py-3 rounded-xl text-sm font-bold shadow-lg shadow-blue-500/30 border border-white/20 transition-all active:scale-95 flex items-center gap-2">➕ <span>Pesanan Baru</span></button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6 mb-8">
-              <div className={`p-6 rounded-3xl ${glassPanel} border-t-4 border-t-yellow-400`}><h3 className={`text-xs font-bold uppercase tracking-wider ${textMuted}`}>Antrean Aktif</h3><p className="text-4xl font-extrabold mt-3">{totalAntreanAktif}</p></div>
-              <div className={`p-6 rounded-3xl ${glassPanel} border-t-4 border-t-blue-500`}><h3 className={`text-xs font-bold uppercase tracking-wider ${textMuted}`}>Total Berat/Qty</h3><p className="text-4xl font-extrabold mt-3 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-500">{totalBeratTersaring.toFixed(1)} <span className="text-lg font-medium text-gray-400">Pcs/Kg</span></p></div>
-              <div className={`p-6 rounded-3xl ${glassPanel} border-t-4 border-t-green-500`}><h3 className={`text-xs font-bold uppercase tracking-wider ${textMuted}`}>Selesai</h3><p className="text-4xl font-extrabold mt-3">{dataTersaring.length - totalAntreanAktif}</p></div>
-            </div>
-
-            <div className="flex flex-col xl:flex-row justify-between mb-6 gap-4">
+            <div className="flex flex-col xl:flex-row justify-between mb-4 gap-4 shrink-0">
               <div className="flex gap-3 flex-wrap">
-                <div className={`flex p-1 rounded-xl w-fit ${glassPanel}`}>
-                  {["semua", "pickup", "selesai"].map((s) => (
-                    <button key={s} onClick={() => setFilterStatus(s)} className={`px-4 md:px-5 py-2 rounded-lg text-xs md:text-sm font-bold transition-all ${filterStatus === s ? "bg-white/20 shadow-sm" : "opacity-60 hover:opacity-100"}`}>{s.toUpperCase()}</button>
-                  ))}
-                </div>
-                <div className={`flex items-center gap-2 px-4 py-1 rounded-xl ${glassPanel}`}>
-                  <span className="text-sm font-bold opacity-60">📅</span>
+                <div className={`flex items-center gap-2 px-4 py-2 rounded-xl ${glassPanel}`}>
+                  <span className="text-sm font-bold opacity-60">📅 Filter:</span>
                   <input type="date" value={filterTanggal} onChange={(e) => setFilterTanggal(e.target.value)} className={`text-xs md:text-sm font-bold outline-none bg-transparent cursor-pointer`} style={{ colorScheme: isDarkMode ? 'dark' : 'light' }} />
                   {filterTanggal && <button onClick={() => setFilterTanggal("")} className="text-red-400 hover:text-red-500 ml-1 text-xs font-bold transition-colors">✕</button>}
                 </div>
               </div>
               <div className="flex gap-3 flex-wrap">
-                <div className={`flex p-1 rounded-xl ${glassPanel}`}>
-                  <button onClick={() => setSortBy("terbaru")} className={`px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-all ${sortBy === "terbaru" ? "bg-white/20 shadow-sm" : "opacity-60 hover:opacity-100"}`}>⏱️ Terbaru</button>
-                  <button onClick={() => setSortBy("terdekat")} className={`px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-all ${sortBy === "terdekat" ? "bg-white/20 shadow-sm" : "opacity-60 hover:opacity-100"}`}>📍 Terdekat</button>
-                </div>
-                <button onClick={generateDanKirimLaporan} disabled={isExporting} className={`px-4 py-2 rounded-xl text-xs md:text-sm font-bold transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2 ${glassPanel} hover:bg-white/10`}>{isExporting ? "⏳ Ekspor..." : "📊 Excel"}</button>
+                <button onClick={generateDanKirimLaporan} disabled={isExporting} className={`px-4 py-2 rounded-xl text-xs md:text-sm font-bold transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2 ${glassPanel} hover:bg-white/10`}>{isExporting ? "⏳ Ekspor..." : "📊 Unduh Excel"}</button>
                 <div className={`flex p-1 rounded-xl hidden md:flex ${glassPanel}`}>
                   <button onClick={() => setViewMode("table")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === "table" ? "bg-white/20 shadow-sm" : "opacity-60 hover:opacity-100"}`}>TABEL</button>
-                  <button onClick={() => setViewMode("grid")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === "grid" ? "bg-white/20 shadow-sm" : "opacity-60 hover:opacity-100"}`}>GRID</button>
+                  <button onClick={() => setViewMode("grid")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === "grid" ? "bg-white/20 shadow-sm" : "opacity-60 hover:opacity-100"}`}>KANBAN</button>
                 </div>
               </div>
             </div>
 
+            {/* ==========================================
+                AREA RENDER (KANBAN BOARD ATAU TABEL)
+                ========================================== */}
             {dataTersaring.length === 0 ? (
-              <div className={`rounded-3xl p-16 text-center ${glassPanel}`}><div className="text-5xl mb-4 opacity-50">📭</div><h3 className="text-xl font-bold mb-2">Tidak ada aktivitas</h3><p className={textMuted}>Belum ada data pesanan pada tanggal atau filter ini.</p></div>
+              <div className={`rounded-3xl p-16 text-center ${glassPanel} my-auto`}><div className="text-5xl mb-4 opacity-50">📭</div><h3 className="text-xl font-bold mb-2">Tidak ada aktivitas</h3><p className={textMuted}>Belum ada data pesanan pada tanggal ini.</p></div>
             ) : viewMode === "table" ? (
               <div className={`rounded-3xl overflow-x-auto ${glassPanel}`}>
                 <table className="min-w-full text-left">
                   <thead className={tableHeaderGlass}>
-                    <tr><th className="p-5 font-semibold text-sm tracking-wide">ID & Pelanggan</th><th className="p-5 font-semibold text-sm tracking-wide">Layanan</th><th className="p-5 font-semibold text-sm tracking-wide">Total</th><th className="p-5 font-semibold text-sm tracking-wide text-center">Status</th><th className="p-5 font-semibold text-sm tracking-wide text-center">Tindakan</th></tr>
+                    <tr><th className="p-5 font-semibold text-sm tracking-wide">ID & Pelanggan</th><th className="p-5 font-semibold text-sm tracking-wide">Layanan</th><th className="p-5 font-semibold text-sm tracking-wide">Pengiriman</th><th className="p-5 font-semibold text-sm tracking-wide text-center">Status Papan</th><th className="p-5 font-semibold text-sm tracking-wide text-center">Tindakan</th></tr>
                   </thead>
                   <tbody className={`divide-y ${isDarkMode ? 'divide-white/5' : 'divide-black/5'}`}>
                     {dataTersaring.map((item) => (
@@ -478,18 +439,19 @@ export default function Dashboard() {
                           <div className="text-sm font-bold text-indigo-400">{item.tipe_layanan?.toUpperCase() || "KILOAN"}</div>
                           <div className="text-xs opacity-80 mt-1">{item.paket_layanan || "Reguler"}</div>
                         </td>
-                        <td className="p-5 min-w-[120px]">
-                          <div className="font-bold text-emerald-400">Rp {item.total_harga?.toLocaleString("id-ID") || 0}</div>
-                          <div className={`text-sm mt-1 ${textMuted}`}>{item.berat_pesanan_kg} {item.tipe_layanan === 'satuan' ? 'Pcs' : 'Kg'}</div>
+                        <td className="p-5 min-w-[150px]">
+                          <div className="text-xs font-bold bg-black/20 px-2 py-1 rounded inline-block">{item.metode_pengiriman || "Driver"}</div>
                         </td>
                         <td className="p-5 text-center align-middle min-w-[150px]">
                           <span className={`px-3 py-1.5 font-bold rounded-lg text-[11px] tracking-wider uppercase block w-max mx-auto ${item.status_logistik === 'selesai' ? 'bg-green-500/20 text-green-500 dark:text-green-400 border border-green-500/30' : 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border border-yellow-500/30'}`}>{item.status_logistik}</span>
                         </td>
                         <td className="p-5 text-center align-middle min-w-[150px]">
-                          {item.status_logistik !== 'selesai' ? (
-                            <button onClick={() => bukaModalFoto(item.id, item.customer_name)} className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white px-4 py-2 rounded-xl text-xs md:text-sm font-bold shadow-lg transition-all active:scale-95 whitespace-nowrap border border-white/20">Kirim Paket 🚀</button>
-                          ) : (
+                          {item.status_logistik === 'Siap Kirim' ? (
+                            <button onClick={() => bukaModalFoto(item.id, item.customer_name)} className="bg-gradient-to-r from-emerald-600 to-green-600 hover:opacity-80 text-white px-4 py-2 rounded-xl text-xs md:text-sm font-bold shadow-lg transition-all active:scale-95 whitespace-nowrap border border-white/20">Selesaikan 🚀</button>
+                          ) : item.status_logistik === 'selesai' ? (
                             <button onClick={() => lihatFotoBukti(item.id)} className={`text-xs font-bold px-3 py-2 rounded-lg transition-all ${glassPanel} hover:bg-white/10`}>👁️ Cek Foto</button>
+                          ) : (
+                            <div className="text-xs opacity-50">Berjalan...</div>
                           )}
                         </td>
                       </tr>
@@ -498,30 +460,66 @@ export default function Dashboard() {
                 </table>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {dataTersaring.map((item) => (
-                  <div key={item.id} className={`p-6 rounded-3xl relative ${glassPanel}`}>
-                    <div className="flex justify-between items-start mb-4">
-                      <div><div className="text-xs font-bold mb-1 opacity-60">#{item.id}</div><h4 className="text-xl font-bold">{item.customer_name}</h4></div>
-                      <span className={`px-3 py-1 font-bold rounded-lg text-[10px] tracking-wider uppercase ${item.status_logistik === 'selesai' ? 'bg-green-500/20 text-green-500 dark:text-green-400' : 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400'}`}>{item.status_logistik}</span>
+              // KANBAN BOARD VIEW
+              <div className="flex gap-4 overflow-x-auto pb-4 flex-1 items-start snap-x snap-mandatory">
+                {KANBAN_COLUMNS.map(col => (
+                  <div 
+                    key={col} 
+                    onDragOver={(e) => e.preventDefault()} 
+                    onDrop={(e) => handleDrop(e, col)} 
+                    className={`min-w-[280px] md:min-w-[320px] max-h-full flex flex-col bg-black/10 dark:bg-black/40 rounded-2xl p-3 border border-white/5 shadow-inner snap-center transition-colors ${draggedOrderId ? 'bg-black/30' : ''}`}
+                  >
+                    <div className="flex justify-between items-center mb-3 px-2 border-b border-white/10 pb-2 shrink-0">
+                      <h3 className="font-extrabold text-sm tracking-wide text-indigo-200 uppercase">{col}</h3>
+                      <span className="bg-white/10 text-xs px-2 py-0.5 rounded-full font-bold">
+                        {dataTersaring.filter(i => i.status_logistik === col || (col === "Antrean" && i.status_logistik === "pickup")).length}
+                      </span>
                     </div>
-                    <div className="space-y-3 mb-6">
-                      <div className="flex items-start gap-3"><span className="opacity-50">📍</span><p className="text-sm opacity-80">{item.alamat_detail}</p></div>
-                      <div className="bg-black/10 dark:bg-black/20 p-3 rounded-xl border border-white/5 space-y-2">
-                        <div className="flex justify-between text-xs font-bold text-indigo-400 pb-2 border-b border-white/10">
-                          <span>{item.tipe_layanan?.toUpperCase()} - {item.paket_layanan}</span>
+                    
+                    <div className="flex-1 overflow-y-auto space-y-3 pr-2 scroll-smooth">
+                      {dataTersaring.filter(i => i.status_logistik === col || (col === "Antrean" && i.status_logistik === "pickup")).map((item) => (
+                        <div 
+                          key={item.id} 
+                          draggable 
+                          onDragStart={(e) => handleDragStart(e, item.id)}
+                          className={`p-4 rounded-xl relative ${glassPanel} cursor-grab active:cursor-grabbing hover:border-indigo-400/50 transition-all shadow-md group`}
+                        >
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <div className="text-[10px] font-bold mb-1 opacity-60">#{item.id}</div>
+                              <h4 className="text-base font-bold leading-tight">{item.customer_name}</h4>
+                            </div>
+                            {item.tipe_layanan === 'satuan' && <span className="bg-purple-500/20 text-purple-300 text-[9px] font-bold px-2 py-1 rounded-md">SATUAN</span>}
+                          </div>
+                          
+                          <div className="text-[11px] bg-black/20 p-2 rounded-lg mb-2 border border-white/5 text-slate-300 font-medium">
+                            <span className="block text-indigo-300 font-bold mb-1">{item.paket_layanan}</span>
+                            🚚 {item.metode_pengiriman || "Driver"}
+                          </div>
+                          
+                          {/* FALLBACK DROPDOWN UNTUK HP */}
+                          <div className="mt-3 border-t border-white/10 pt-3">
+                            <label className="text-[10px] opacity-60 mb-1 block md:hidden">Pindah Status (Tap untuk HP):</label>
+                            <label className="text-[10px] opacity-60 mb-1 hidden md:block">Pindah Status (Geser / Klik):</label>
+                            <select 
+                              value={item.status_logistik === 'pickup' ? 'Antrean' : item.status_logistik} 
+                              onChange={(e) => perbaruiStatusPesanan(item.id, e.target.value)} 
+                              className="w-full bg-black/30 text-white text-xs p-1.5 rounded outline-none border border-white/10 cursor-pointer hover:bg-black/50 appearance-none"
+                            >
+                              {KANBAN_COLUMNS.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                          </div>
+
+                          {/* TOMBOL AKSI AKHIR */}
+                          {col === "Siap Kirim" && (
+                            <button onClick={() => bukaModalFoto(item.id, item.customer_name)} className="w-full mt-3 bg-gradient-to-r from-emerald-600 to-green-600 text-white py-2 rounded-lg text-xs font-bold transition-all shadow border border-white/20">Selesaikan & Kirim Nota 🚀</button>
+                          )}
+                          {col === "selesai" && (
+                            <button onClick={() => lihatFotoBukti(item.id)} className="w-full mt-3 py-2 rounded-lg text-xs font-bold transition-all bg-white/5 border border-white/10 hover:bg-white/10">👁️ Cek Foto</button>
+                          )}
                         </div>
-                        <div className="flex justify-between items-center">
-                          <div className="font-bold">📦 {item.berat_pesanan_kg} <span className="text-xs opacity-50 font-normal">{item.tipe_layanan === 'satuan' ? 'Pcs' : 'kg'}</span></div>
-                          <div className="font-bold text-emerald-400">Rp {item.total_harga?.toLocaleString("id-ID")}</div>
-                        </div>
-                      </div>
+                      ))}
                     </div>
-                    {item.status_logistik !== 'selesai' ? (
-                      <button onClick={() => bukaModalFoto(item.id, item.customer_name)} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 rounded-xl font-bold transition-all active:scale-95 shadow-lg border border-white/20">Kirim Paket 🚀</button>
-                    ) : (
-                      <button onClick={() => lihatFotoBukti(item.id)} className={`w-full py-3 rounded-xl font-bold text-sm transition-all ${glassPanel} hover:bg-white/10`}>👁️ Cek Foto Bukti</button>
-                    )}
                   </div>
                 ))}
               </div>
@@ -557,6 +555,16 @@ export default function Dashboard() {
                 </select>
               </div>
 
+              {/* INPUT METODE PENGIRIMAN */}
+              <div>
+                <label className="block text-sm font-bold mb-1 opacity-80">Metode Pengiriman</label>
+                <select value={formData.metode_pengiriman} onChange={(e) => setFormData({...formData, metode_pengiriman: e.target.value})} className={`w-full py-3 px-4 rounded-xl outline-none transition-all appearance-none cursor-pointer ${glassInput}`}>
+                  <option value="Diantar Driver Internal" className="text-black">🛵 Diantar Driver Internal</option>
+                  <option value="Pickup di Toko Sendiri" className="text-black">🏪 Customer Ambil Sendiri (Pickup)</option>
+                  <option value="GoSend / GrabExpress" className="text-black">📦 GoSend / GrabExpress</option>
+                </select>
+              </div>
+
               <div className="relative">
                 <label className="block text-sm font-bold mb-1 opacity-80">Nama Pelanggan</label>
                 <input type="text" required value={formData.customer_name} onChange={(e) => { setFormData({...formData, customer_name: e.target.value}); setShowSuggestions(true); }} onFocus={() => setShowSuggestions(true)} onBlur={() => setTimeout(() => setShowSuggestions(false), 200)} className={`w-full py-3 px-4 rounded-xl outline-none transition-all ${glassInput}`} placeholder="Ketik nama pelanggan..." />
@@ -571,7 +579,6 @@ export default function Dashboard() {
 
               <div><label className="block text-sm font-bold mb-1 opacity-80">Alamat Lengkap</label><textarea required value={formData.alamat_detail} onChange={(e) => setFormData({...formData, alamat_detail: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} rows={2}></textarea></div>
               
-              {/* RINCIAN QTY PAKAIAN (- / +) */}
               <div className="border border-white/10 rounded-2xl p-4 bg-white/5">
                 <label className="block text-sm font-bold mb-3 text-indigo-300">📝 Rincian Pakaian (Opsional)</label>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-3">
@@ -591,9 +598,7 @@ export default function Dashboard() {
                     </div>
                   ))}
                 </div>
-                {formData.tipe_layanan === "satuan" && (
-                  <p className="text-[10px] text-emerald-400 mt-3 text-center">*Total Pcs satuan akan otomatis dihitung dari rincian di atas.</p>
-                )}
+                {formData.tipe_layanan === "satuan" && <p className="text-[10px] text-emerald-400 mt-3 text-center">*Total Pcs satuan akan otomatis dihitung dari rincian di atas.</p>}
               </div>
 
               <div className="grid grid-cols-2 gap-4 bg-white/5 p-4 rounded-2xl border border-white/5">
@@ -615,7 +620,7 @@ export default function Dashboard() {
               <div className="pt-2 flex gap-3 shrink-0 pb-2">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 font-bold py-3 rounded-xl transition-all bg-white/5 hover:bg-white/10 border border-white/10">Batal</button>
                 <button type="submit" disabled={isSubmitting} className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 font-bold py-3 rounded-xl hover:opacity-90 transition-all disabled:opacity-50 border border-white/20 shadow-lg text-white">
-                  {isSubmitting ? "Menyimpan..." : "Simpan Nota 🧾"}
+                  {isSubmitting ? "Menyimpan..." : "Simpan Pesanan 🧾"}
                 </button>
               </div>
             </form>
@@ -623,32 +628,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ==========================================
-          MODAL TAMBAH CUSTOMER BARU
-          ========================================== */}
-      {isCustomerModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-          <div className={`rounded-3xl w-full max-w-md overflow-hidden ${glassPanel} border-white/20 shadow-2xl`}>
-            <div className="bg-white/10 border-b border-white/10 p-5 flex justify-between items-center rounded-t-3xl">
-              <h2 className="font-bold text-lg">👥 Tambah Customer</h2>
-              <button onClick={() => setIsCustomerModalOpen(false)} className="opacity-70 hover:opacity-100 text-2xl">×</button>
-            </div>
-            <form onSubmit={handleTambahCustomer} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
-              <div><label className="block text-sm font-bold mb-1 opacity-80">Nama Lengkap</label><input type="text" required value={customerFormData.name} onChange={(e) => setCustomerFormData({...customerFormData, name: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} /></div>
-              <div><label className="block text-sm font-bold mb-1 opacity-80">Alamat Default</label><textarea required value={customerFormData.alamat_detail} onChange={(e) => setCustomerFormData({...customerFormData, alamat_detail: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} rows={2}></textarea></div>
-              <div><label className="block text-sm font-bold mb-1 opacity-80">Jarak Default (KM)</label><input type="number" step="0.1" required value={customerFormData.jarak_ke_toko_km} onChange={(e) => setCustomerFormData({...customerFormData, jarak_ke_toko_km: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} /></div>
-              <div className="pt-4 flex gap-3">
-                <button type="button" onClick={() => setIsCustomerModalOpen(false)} className={`flex-1 font-bold py-3 rounded-xl transition-all bg-black/10 hover:bg-black/20 dark:bg-white/5 dark:hover:bg-white/10 border border-white/10`}>Batal</button>
-                <button type="submit" disabled={isSubmittingCustomer} className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 font-bold py-3 rounded-xl hover:opacity-90 transition-all disabled:opacity-50 shadow-lg border border-white/20 text-white">Simpan</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ==========================================
-          MODAL KAMERA BUKTI PENGIRIMAN
-          ========================================== */}
+      {/* MODAL KAMERA BUKTI PENGIRIMAN */}
       {isPhotoModalOpen && selectedOrder && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className={`rounded-3xl w-full max-w-sm overflow-hidden ${glassPanel} border-white/20 shadow-2xl text-white`}>
@@ -671,8 +651,29 @@ export default function Dashboard() {
                 </div>
               )}
               <button type="submit" disabled={isUploadingPhoto || !deliveryPhoto} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:opacity-90 text-white font-bold py-4 rounded-xl disabled:opacity-50 transition-all shadow-lg border border-white/20">
-                {isUploadingPhoto ? "🚀 Memproses..." : "Kirim & Selesai"}
+                {isUploadingPhoto ? "🚀 Memproses..." : "Kirim Nota Akhir & Selesai"}
               </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL LAINNYA DIBAWAH TETAP AMAN (CUSTOMER / PREVIEW BUKTI) */}
+      {isCustomerModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+          <div className={`rounded-3xl w-full max-w-md overflow-hidden ${glassPanel} border-white/20 shadow-2xl`}>
+            <div className="bg-white/10 border-b border-white/10 p-5 flex justify-between items-center rounded-t-3xl">
+              <h2 className="font-bold text-lg">👥 Tambah Customer</h2>
+              <button onClick={() => setIsCustomerModalOpen(false)} className="opacity-70 hover:opacity-100 text-2xl">×</button>
+            </div>
+            <form onSubmit={handleTambahCustomer} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+              <div><label className="block text-sm font-bold mb-1 opacity-80">Nama Lengkap</label><input type="text" required value={customerFormData.name} onChange={(e) => setCustomerFormData({...customerFormData, name: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} /></div>
+              <div><label className="block text-sm font-bold mb-1 opacity-80">Alamat Default</label><textarea required value={customerFormData.alamat_detail} onChange={(e) => setCustomerFormData({...customerFormData, alamat_detail: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} rows={2}></textarea></div>
+              <div><label className="block text-sm font-bold mb-1 opacity-80">Jarak Default (KM)</label><input type="number" step="0.1" required value={customerFormData.jarak_ke_toko_km} onChange={(e) => setCustomerFormData({...customerFormData, jarak_ke_toko_km: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} /></div>
+              <div className="pt-4 flex gap-3">
+                <button type="button" onClick={() => setIsCustomerModalOpen(false)} className={`flex-1 font-bold py-3 rounded-xl transition-all bg-black/10 hover:bg-black/20 dark:bg-white/5 dark:hover:bg-white/10 border border-white/10`}>Batal</button>
+                <button type="submit" disabled={isSubmittingCustomer} className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 font-bold py-3 rounded-xl hover:opacity-90 transition-all disabled:opacity-50 shadow-lg border border-white/20 text-white">Simpan</button>
+              </div>
             </form>
           </div>
         </div>
@@ -689,7 +690,6 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-
     </div>
   );
 }

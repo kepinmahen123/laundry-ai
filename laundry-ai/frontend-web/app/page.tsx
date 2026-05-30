@@ -37,6 +37,12 @@ export default function Dashboard() {
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }); 
 
+  // ==========================================
+  // STATE FITUR BARU: KALENDER PENDAPATAN
+  // ==========================================
+  const [calendarMonth, setCalendarMonth] = useState<number>(new Date().getMonth()); // 0 = Jan, 11 = Des
+  const [calendarYear, setCalendarYear] = useState<number>(new Date().getFullYear());
+
   // STATE FORM & POS
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -72,9 +78,7 @@ export default function Dashboard() {
     setRincianItem(prev => ({ ...prev, [itemKey]: Math.max(0, prev[itemKey as keyof typeof defaultRincian] + delta) }));
   };
 
-  // ==========================================
   // KANBAN DRAG & DROP & NOTIFIKASI OTOMATIS
-  // ==========================================
   const KANBAN_COLUMNS = ["Antrean", "Sedang Dicuci", "Disetrika", "Packing", "Siap Kirim", "selesai"];
   const [draggedOrderId, setDraggedOrderId] = useState<number | null>(null);
 
@@ -92,31 +96,20 @@ export default function Dashboard() {
   };
 
   const perbaruiStatusPesanan = async (id: number, newStatus: string) => {
-    // 1. Ambil data pesanan saat ini sebelum diubah
     const orderLama = pesanan.find(p => p.id === id);
     if (!orderLama) return;
 
-    // 2. Update UI seketika (Optimistic UI)
     setPesanan(prev => prev.map(p => p.id === id ? { ...p, status_logistik: newStatus } : p));
-    
-    // 3. Update Database Supabase
     const { error } = await supabase.from("orders").update({ status_logistik: newStatus }).eq("id", id);
-    if (error) { 
-      alert("Gagal memperbarui status!"); 
-      ambilData(); 
-      return;
-    }
+    if (error) { alert("Gagal memperbarui status!"); ambilData(); return; }
 
-    // 4. CEK NOTIFIKASI: Jika kartu baru masuk ke "Siap Kirim" dari status lain
     if (newStatus === "Siap Kirim" && orderLama.status_logistik !== "Siap Kirim") {
       kirimNotifSiapKirim(orderLama);
     }
   };
 
-  // Fungsi menembak notif "Siap Kirim" berdasarkan Metode Pengiriman
   const kirimNotifSiapKirim = async (order: any) => {
     let teksNotif = "";
-    
     if (order.metode_pengiriman === "Diantar Driver Internal") {
       teksNotif = `✨ *HALO ${order.customer_name}* ✨\n\nKabar gembira! Cucian kamu (Nota #${order.id}) sudah selesai diproses hingga bersih, wangi, dan rapi! 🧺✨\n\n🛵 Saat ini cucian kamu berada di status *Siap Kirim*. Driver kami akan segera meluncur untuk mengantarkan paket ini ke alamatmu. Mohon ditunggu ya! 🙏`;
     } else if (order.metode_pengiriman === "Pickup di Toko Sendiri") {
@@ -129,17 +122,12 @@ export default function Dashboard() {
 
     try {
       await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ chat_id: chatId, text: teksNotif, parse_mode: "Markdown" })
       });
-      console.log("Notifikasi Siap Kirim berhasil ditembakkan!");
-    } catch (err) {
-      console.error("Gagal mengirim notif siap kirim:", err);
-    }
+    } catch (err) { console.error("Gagal mengirim notif siap kirim:", err); }
   };
 
-  // KAMERA & DATA LAINNYA
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [isSubmittingCustomer, setIsSubmittingCustomer] = useState(false);
   const [customerFormData, setCustomerFormData] = useState({ name: "", alamat_detail: "", jarak_ke_toko_km: "" });
@@ -334,6 +322,39 @@ export default function Dashboard() {
     } catch (err) { alert("Kesalahan sistem."); } finally { setIsExporting(false); }
   }
 
+  // ==========================================
+  // LOGIKA RENDER DATA KALENDER PENDAPATAN
+  // ==========================================
+  const pesananBulanIni = pesanan.filter(p => {
+    if (!p.created_at) return false;
+    const d = new Date(p.created_at);
+    return d.getMonth() === calendarMonth && d.getFullYear() === calendarYear;
+  });
+
+  const rekapHarian: { [key: number]: { qty: number, total: number } } = {};
+  pesananBulanIni.forEach(p => {
+     const d = new Date(p.created_at);
+     const tgl = d.getDate();
+     if(!rekapHarian[tgl]) rekapHarian[tgl] = { qty: 0, total: 0 };
+     rekapHarian[tgl].qty += 1;
+     rekapHarian[tgl].total += Number(p.total_harga || 0);
+  });
+
+  const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+  const calendarCards = [];
+  for(let i = 1; i <= daysInMonth; i++) {
+     calendarCards.push({
+       tanggal: i,
+       qty: rekapHarian[i]?.qty || 0,
+       total: rekapHarian[i]?.total || 0
+     });
+  }
+
+  const totalBulanQty = calendarCards.reduce((acc, curr) => acc + curr.qty, 0);
+  const totalBulanRp = calendarCards.reduce((acc, curr) => acc + curr.total, 0);
+  const namaBulan = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+
+
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4 mx-auto"></div></div>;
   if (!session) return null;
 
@@ -365,6 +386,9 @@ export default function Dashboard() {
       <button onClick={() => setIsSidebarOpen(true)} className={`md:hidden fixed top-4 left-4 z-40 p-3 rounded-xl ${glassPanel} active:scale-95`}><span className="text-xl">☰</span></button>
       {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40" />}
 
+      {/* ==========================================
+          SIDEBAR DENGAN MENU KALENDER BARU
+          ========================================== */}
       <aside className={`fixed md:relative inset-y-0 left-0 z-50 w-64 flex flex-col justify-between ${glassPanel} border-r border-r-white/10 md:m-4 md:rounded-3xl transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}>
         <button onClick={() => setIsSidebarOpen(false)} className="md:hidden absolute top-4 right-4 text-white opacity-70 text-2xl font-bold">✕</button>
         <div>
@@ -373,10 +397,10 @@ export default function Dashboard() {
             <div><h2 className="font-extrabold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">LaundroAI</h2><p className={`text-xs ${textMuted}`}>Logistics System</p></div>
           </div>
           <nav className="mt-4 px-4 space-y-2">
-            {['Dashboard', 'Tracking', 'Database Customers'].map((menu) => (
+            {['Dashboard', 'Tracking', 'Database Customers', 'Calendar'].map((menu) => (
               <button key={menu} onClick={() => { setActiveMenu(menu); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold transition-all duration-300 ${activeMenu === menu ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30 border border-white/20" : `${isDarkMode ? 'text-gray-400 hover:bg-white/10' : 'text-gray-600 hover:bg-white/40'}`}`}>
-                {menu === 'Dashboard' && "📊"} {menu === 'Tracking' && "📍"} {menu === 'Database Customers' && "👥"}
-                <span className="text-sm">{menu}</span>
+                {menu === 'Dashboard' && "📊"} {menu === 'Tracking' && "📍"} {menu === 'Database Customers' && "👥"} {menu === 'Calendar' && "📅"}
+                <span className="text-sm">{menu === 'Calendar' ? 'Kalender Income' : menu}</span>
               </button>
             ))}
           </nav>
@@ -388,7 +412,61 @@ export default function Dashboard() {
       </aside>
 
       <main className="flex-1 overflow-y-auto p-6 lg:p-10 pt-20 md:pt-10 scroll-smooth z-10 w-full max-w-full">
-        {activeMenu === "Tracking" ? (
+        {activeMenu === "Calendar" ? (
+          // ==========================================
+          // RENDER MODUL KALENDER PENDAPATAN
+          // ==========================================
+          <div className="max-w-7xl mx-auto flex flex-col h-full">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 shrink-0">
+              <div>
+                <h1 className="text-3xl font-extrabold tracking-tight">Kalender Pendapatan 📅</h1>
+                <p className={`text-sm mt-1 ${textMuted}`}>Pantau rekap transaksi dan pendapatan harian.</p>
+              </div>
+              <div className="flex gap-2">
+                <select value={calendarMonth} onChange={e => setCalendarMonth(Number(e.target.value))} className={`px-4 py-2 rounded-xl font-bold outline-none cursor-pointer ${glassPanel} text-black dark:text-white`}>
+                  {namaBulan.map((m, i) => <option key={i} value={i} className="text-black">{m}</option>)}
+                </select>
+                <input type="number" value={calendarYear} onChange={e => setCalendarYear(Number(e.target.value))} className={`px-4 py-2 rounded-xl font-bold outline-none w-24 ${glassPanel}`} />
+              </div>
+            </div>
+
+            {/* Ringkasan Bulan Ini */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+              <div className={`p-5 rounded-2xl ${glassPanel} border-l-4 border-l-blue-500 flex items-center justify-between`}>
+                <div>
+                  <p className={`text-xs font-bold uppercase tracking-wider ${textMuted}`}>Total Transaksi Bulan Ini</p>
+                  <p className="text-2xl font-black mt-1">{totalBulanQty} <span className="text-sm font-medium opacity-50">Nota</span></p>
+                </div>
+                <div className="text-4xl opacity-20">🧾</div>
+              </div>
+              <div className={`p-5 rounded-2xl ${glassPanel} border-l-4 border-l-emerald-500 flex items-center justify-between`}>
+                <div>
+                  <p className={`text-xs font-bold uppercase tracking-wider ${textMuted}`}>Total Pendapatan Bulan Ini</p>
+                  <p className="text-2xl font-black mt-1 text-emerald-400">Rp {totalBulanRp.toLocaleString("id-ID")}</p>
+                </div>
+                <div className="text-4xl opacity-20">💰</div>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto pb-4 pr-2 scroll-smooth">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-4">
+                {calendarCards.map(day => (
+                  <div key={day.tanggal} className={`p-4 rounded-2xl border transition-all ${day.qty > 0 ? 'bg-gradient-to-br from-indigo-900/40 to-blue-900/20 border-indigo-500/30 shadow-lg shadow-indigo-500/10' : `${glassPanel} opacity-60 hover:opacity-100`}`}>
+                    <div className="flex justify-between items-start mb-3">
+                      <span className="text-xl font-black opacity-80">{day.tanggal}</span>
+                      {day.qty > 0 && <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded">Aktif</span>}
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[11px] opacity-70">Transaksi: <span className="font-bold text-white text-xs">{day.qty}</span></p>
+                      <p className="text-sm font-black text-emerald-400">Rp {day.total.toLocaleString("id-ID")}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+        ) : activeMenu === "Tracking" ? (
           <div className="max-w-7xl mx-auto h-full flex flex-col">
              <div className="mb-6"><h1 className="text-3xl font-extrabold tracking-tight">Tracking Armada 📍</h1><p className={`text-sm mt-1 ${textMuted}`}>Pantau pergerakan antrean paket secara real-time.</p></div>
              <div className={`flex-1 rounded-3xl overflow-hidden p-2 ${glassPanel}`}>
@@ -500,7 +578,6 @@ export default function Dashboard() {
                 </table>
               </div>
             ) : (
-              // KANBAN BOARD VIEW
               <div className="flex gap-4 overflow-x-auto pb-4 flex-1 items-start snap-x snap-mandatory">
                 {KANBAN_COLUMNS.map(col => (
                   <div 

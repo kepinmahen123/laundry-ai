@@ -19,42 +19,68 @@ const mapContainerStyle = { width: "100%", height: "600px", borderRadius: "16px"
 export default function Dashboard() {
   const router = useRouter();
 
-  // STATE UTAMA
+  // 1. STATE UTAMA
   const [pesanan, setPesanan] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]); 
   const [session, setSession] = useState<any>(null); 
   const [loading, setLoading] = useState(true); 
   
-  // STATE UI & LAYOUT
+  // 2. STATE UI & LAYOUT
   const [filterStatus, setFilterStatus] = useState<string>("semua");
   const [viewMode, setViewMode] = useState<string>("table");
   const [isDarkMode, setIsDarkMode] = useState(true); 
   const [activeMenu, setActiveMenu] = useState("Dashboard");
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [completionDate, setCompletionDate] = useState<string | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
+  const [completionDate, setCompletionDate] = useState<string | null>(null); 
   
-  // STATE FILTER
+  // 3. STATE FILTER & SORT
   const [sortBy, setSortBy] = useState<"terbaru" | "terdekat">("terbaru");
   const [filterTanggal, setFilterTanggal] = useState<string>(() => {
     const d = new Date();
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }); 
 
-  // STATE MODAL
+  // ==========================================
+  // FITUR 1: POS & PESANAN BARU
+  // ==========================================
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isExporting, setIsExporting] = useState(false); 
+  const [showSuggestions, setShowSuggestions] = useState(false); 
   const [formData, setFormData] = useState({ 
-    customer_name: "", alamat_detail: "", jarak_ke_toko_km: "", berat_pesanan_kg: "" 
+    customer_name: "", 
+    alamat_detail: "", 
+    jarak_ke_toko_km: "", 
+    berat_pesanan_kg: "", 
+    latitude: "", 
+    longitude: "",
+    tipe_layanan: "kiloan", 
+    harga_per_unit: "7000", 
+    total_harga: 0
   });
 
+  // LOGIKA MATEMATIS POS OTOMATIS (Tanpa klik tombol)
+  useEffect(() => {
+    const jumlah = Number(formData.berat_pesanan_kg) || 0;
+    const harga = Number(formData.harga_per_unit) || 0;
+    setFormData(prev => ({
+      ...prev,
+      total_harga: jumlah * harga
+    }));
+  }, [formData.berat_pesanan_kg, formData.harga_per_unit, formData.tipe_layanan]);
+
+  // ==========================================
+  // FITUR 2: TAMBAH DATABASE CUSTOMER
+  // ==========================================
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [isSubmittingCustomer, setIsSubmittingCustomer] = useState(false);
+  // (Latitude dan Longitude sudah dihapus dari state ini)
   const [customerFormData, setCustomerFormData] = useState({
     name: "", alamat_detail: "", jarak_ke_toko_km: ""
   });
 
-  // STATE KAMERA/FOTO
+  // ==========================================
+  // FITUR 3: KAMERA & BUKTI PENGIRIMAN
+  // ==========================================
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [deliveryPhoto, setDeliveryPhoto] = useState<File | null>(null);
@@ -63,11 +89,16 @@ export default function Dashboard() {
   const [buktiFotoUrls, setBuktiFotoUrls] = useState<{[key: number]: string}>({});
   const [previewTargetUrl, setPreviewTargetUrl] = useState<string>("");
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+
+  // LAIN-LAIN
+  const [isExporting, setIsExporting] = useState(false); 
   const [timerTick, setTimerTick] = useState(0);
   const [selectedMarker, setSelectedMarker] = useState<any>(null);
-
   const { isLoaded: isMapLoaded } = useJsApiLoader({ id: 'google-map-script', googleMapsApiKey: GOOGLE_MAPS_API_KEY });
 
+  // ==========================================
+  // SIKLUS HIDUP & AMBIL DATA
+  // ==========================================
   useEffect(() => {
     async function cekKeamanan() {
       const { data: { session } } = await supabase.auth.getSession();
@@ -96,32 +127,23 @@ export default function Dashboard() {
     router.push("/login");
   }
 
-  function formatTanggalWaktu(waktuDibuat: string) {
-    if (!waktuDibuat) return "-";
-    const d = new Date(waktuDibuat);
-    const tanggal = String(d.getDate()).padStart(2, '0');
-    const bulan = String(d.getMonth() + 1).padStart(2, '0');
-    const tahun = d.getFullYear();
-    const jam = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-    return `${tanggal}/${bulan}/${tahun} - ${jam} WIB`;
-  }
-
   function hitungWaktuTunggu(waktuDibuat: string) {
     if (!waktuDibuat) return "-";
     const sekarang = new Date();
     const dibuat = new Date(waktuDibuat);
     const selisihMs = Math.max(0, sekarang.getTime() - dibuat.getTime());
     const selisihMenitTotal = Math.floor(selisihMs / (1000 * 60));
-    
     if (selisihMenitTotal < 60) return `${selisihMenitTotal} mnt lalu`;
     const selisihJam = Math.floor(selisihMenitTotal / 60);
     const sisaMenit = selisihMenitTotal % 60;
-    
     if (selisihJam < 24) return `${selisihJam}j ${sisaMenit}m lalu`;
     const selisihHari = Math.floor(selisihJam / 24);
     return `${selisihHari} hari lalu`;
   }
 
+  // ==========================================
+  // FUNGSI PENGIRIMAN & FOTO BUKTI
+  // ==========================================
   function bukaModalFoto(id: number, nama: string) {
     setSelectedOrder({ id, customer_name: nama });
     setDeliveryPhoto(null); setLivePreviewUrl(null); setIsPhotoModalOpen(true);
@@ -169,7 +191,6 @@ export default function Dashboard() {
       await fetch(`https://api.telegram.org/bot${telegramToken}/sendPhoto`, { method: "POST", body: fileData });
 
       if (livePreviewUrl) setBuktiFotoUrls(prev => ({ ...prev, [selectedOrder.id]: livePreviewUrl }));
-      
       alert(`🎉 Pengiriman Berhasil!\nWaktu Penyelesaian: ${waktuSelesai}`);
       
     } catch (err) { 
@@ -179,15 +200,22 @@ export default function Dashboard() {
     }
   }
 
+  // ==========================================
+  // FUNGSI SIMPAN DATA KE SUPABASE
+  // ==========================================
   async function handleTambahPesanan(e: React.FormEvent) {
     e.preventDefault();
     setIsSubmitting(true);
+    // Catatan: Tipe layanan dan Total Harga sementara dihitung di layar kasir saja, 
+    // jika ingin disimpan permanen di database, perlu ditambah kolomnya di Supabase.
     const { error } = await supabase.from("orders").insert([
       { 
         customer_name: formData.customer_name, 
         alamat_detail: formData.alamat_detail, 
         jarak_ke_toko_km: Number(formData.jarak_ke_toko_km), 
         berat_pesanan_kg: Number(formData.berat_pesanan_kg), 
+        latitude: formData.latitude ? Number(formData.latitude) : 0, 
+        longitude: formData.longitude ? Number(formData.longitude) : 0, 
         status_logistik: "pickup" 
       }
     ]);
@@ -195,7 +223,7 @@ export default function Dashboard() {
     if (error) alert("Gagal: " + error.message);
     else { 
       setIsModalOpen(false); 
-      setFormData({ customer_name: "", alamat_detail: "", jarak_ke_toko_km: "", berat_pesanan_kg: "" }); 
+      setFormData({ customer_name: "", alamat_detail: "", jarak_ke_toko_km: "", berat_pesanan_kg: "", latitude: "", longitude: "", tipe_layanan: "kiloan", harga_per_unit: "7000", total_harga: 0 }); 
       ambilData(); 
     }
   }
@@ -212,17 +240,21 @@ export default function Dashboard() {
     ]);
     setIsSubmittingCustomer(false);
     if (error) alert("Gagal menyimpan data pelanggan. Error: " + error.message);
-    else { setIsCustomerModalOpen(false); setCustomerFormData({ name: "", alamat_detail: "", jarak_ke_toko_km: "" }); ambilData(); }
+    else { 
+      setIsCustomerModalOpen(false); 
+      setCustomerFormData({ name: "", alamat_detail: "", jarak_ke_toko_km: "" }); 
+      ambilData(); 
+    }
   }
 
   async function generateDanKirimLaporan() {
     setIsExporting(true);
     try {
-      let barisCsv = "ID Pesanan,Tanggal,Nama Pelanggan,Alamat Detail,Jarak (KM),Berat (KG),Status Logistik\n";
+      let barisCsv = "ID Pesanan,Tanggal,Nama Pelanggan,Alamat Detail,Jarak (KM),Berat (KG),Status Logistik,Lat,Lng\n";
       dataTersaring.forEach((item) => {
         const d = item.created_at ? new Date(item.created_at) : new Date();
         const tgl = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-        barisCsv += `${item.id || "-"},${tgl},${String(item.customer_name || "-").replace(/,/g, " ")},${String(item.alamat_detail || "-").replace(/,/g, " ")},${item.jarak_ke_toko_km || "0"},${item.berat_pesanan_kg || "0"},${item.status_logistik || "-"}\n`;
+        barisCsv += `${item.id || "-"},${tgl},${String(item.customer_name || "-").replace(/,/g, " ")},${String(item.alamat_detail || "-").replace(/,/g, " ")},${item.jarak_ke_toko_km || "0"},${item.berat_pesanan_kg || "0"},${item.status_logistik || "-"},${item.latitude || "-"},${item.longitude || "-"}\n`;
       });
       const blob = new Blob([barisCsv], { type: "text/csv;charset=utf-8;" });
       const fileLaporan = new FormData();
@@ -256,7 +288,9 @@ export default function Dashboard() {
   const totalAntreanAktif = dataTersaring.filter((item) => item.status_logistik !== "selesai").length;
   const totalBeratTersaring = dataTersaring.reduce((acc, item) => acc + Number(item.berat_pesanan_kg || 0), 0);
 
-  // GLASSMORPHISM THEME CONFIGURATION
+  // ==========================================
+  // THEME & STYLING GLASSMORPHISM
+  // ==========================================
   const dynamicBg = isDarkMode 
     ? "bg-gradient-to-br from-indigo-950 via-gray-900 to-purple-950 text-white" 
     : "bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-100 text-gray-900";
@@ -279,13 +313,26 @@ export default function Dashboard() {
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-blue-500/20 blur-[120px] pointer-events-none"></div>
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-purple-500/20 blur-[120px] pointer-events-none"></div>
 
-      <button onClick={() => setIsSidebarOpen(true)} className={`md:hidden fixed top-4 left-4 z-40 p-3 rounded-xl ${glassPanel} active:scale-95`}>
+      {/* --- TOMBOL HAMBURGER MOBILE --- */}
+      <button 
+        onClick={() => setIsSidebarOpen(true)}
+        className={`md:hidden fixed top-4 left-4 z-40 p-3 rounded-xl ${glassPanel} active:scale-95`}
+      >
         <span className="text-xl">☰</span>
       </button>
 
-      {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40" />}
+      {/* --- BACKDROP MOBILE (GELAP SAAT SIDEBAR BUKA) --- */}
+      {isSidebarOpen && (
+        <div onClick={() => setIsSidebarOpen(false)} className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40" />
+      )}
 
-      <aside className={`fixed md:relative inset-y-0 left-0 z-50 w-64 flex flex-col justify-between ${glassPanel} border-r border-r-white/10 md:m-4 md:rounded-3xl transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}>
+      {/* --- SIDEBAR RESPONSIVE --- */}
+      <aside className={`
+        fixed md:relative inset-y-0 left-0 z-50 w-64 flex flex-col justify-between ${glassPanel} 
+        border-r border-r-white/10 md:m-4 md:rounded-3xl
+        transform transition-transform duration-300 ease-in-out
+        ${isSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
+      `}>
         <button onClick={() => setIsSidebarOpen(false)} className="md:hidden absolute top-4 right-4 text-white opacity-70 text-2xl font-bold">✕</button>
 
         <div>
@@ -303,7 +350,9 @@ export default function Dashboard() {
                 key={menu} 
                 onClick={() => { setActiveMenu(menu); setIsSidebarOpen(false); }} 
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold transition-all duration-300 ${
-                  activeMenu === menu ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg border border-white/20" : `${isDarkMode ? 'text-gray-400 hover:bg-white/10' : 'text-gray-600 hover:bg-white/40'}`
+                  activeMenu === menu 
+                  ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30 border border-white/20" 
+                  : `${isDarkMode ? 'text-gray-400 hover:bg-white/10' : 'text-gray-600 hover:bg-white/40'}`
                 }`}
               >
                 {menu === 'Dashboard' && "📊"} {menu === 'Tracking' && "📍"} {menu === 'Database Customers' && "👥"}
@@ -323,8 +372,10 @@ export default function Dashboard() {
         </div>
       </aside>
 
+      {/* --- KONTEN UTAMA --- */}
       <main className="flex-1 overflow-y-auto p-6 lg:p-10 pt-20 md:pt-10 scroll-smooth z-10 w-full max-w-full">
         
+        {/* MODUL TRACKING */}
         {activeMenu === "Tracking" ? (
           <div className="max-w-7xl mx-auto h-full flex flex-col">
              <div className="mb-6">
@@ -359,6 +410,8 @@ export default function Dashboard() {
                 )}
              </div>
           </div>
+
+        // MODUL DATABASE
         ) : activeMenu === "Database Customers" ? (
           <div className="max-w-7xl mx-auto overflow-x-auto">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
@@ -366,7 +419,7 @@ export default function Dashboard() {
                 <h1 className="text-3xl font-extrabold tracking-tight">Database Pelanggan 👥</h1>
                 <p className={`text-sm mt-1 ${textMuted}`}>Kelola profil pelanggan untuk fitur Autofill.</p>
               </div>
-              <button onClick={() => setIsCustomerModalOpen(true)} className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-5 py-3 rounded-xl text-sm font-bold shadow-lg border border-white/20 transition-all active:scale-95 flex items-center gap-2">
+              <button onClick={() => setIsCustomerModalOpen(true)} className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-5 py-3 rounded-xl text-sm font-bold shadow-lg shadow-purple-500/30 border border-white/20 transition-all active:scale-95 flex items-center gap-2">
                 ➕ <span>Customer Baru</span>
               </button>
             </div>
@@ -384,7 +437,7 @@ export default function Dashboard() {
                     <tr>
                       <th className="p-5 font-semibold text-sm tracking-wide">Nama Pelanggan</th>
                       <th className="p-5 font-semibold text-sm tracking-wide">Alamat Default</th>
-                      <th className="p-5 font-semibold text-sm tracking-wide">Jarak (KM)</th>
+                      <th className="p-5 font-semibold text-sm tracking-wide">Jarak</th>
                     </tr>
                   </thead>
                   <tbody className={`divide-y ${isDarkMode ? 'divide-white/5' : 'divide-black/5'}`}>
@@ -400,6 +453,8 @@ export default function Dashboard() {
               </div>
             )}
           </div>
+
+        // MODUL DASHBOARD UTAMA
         ) : (
           <div className="max-w-7xl mx-auto">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
@@ -407,7 +462,7 @@ export default function Dashboard() {
                 <h1 className="text-3xl font-extrabold tracking-tight">Ringkasan Operasional</h1>
                 <p className={`text-sm mt-1 ${textMuted}`}>Pantau pergerakan kurir dan selesaikan pesanan.</p>
               </div>
-              <button onClick={() => setIsModalOpen(true)} className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-5 py-3 rounded-xl text-sm font-bold shadow-lg border border-white/20 transition-all active:scale-95 flex items-center gap-2">
+              <button onClick={() => setIsModalOpen(true)} className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-5 py-3 rounded-xl text-sm font-bold shadow-lg shadow-blue-500/30 border border-white/20 transition-all active:scale-95 flex items-center gap-2">
                 ➕ <span>Pesanan Baru</span>
               </button>
             </div>
@@ -483,7 +538,7 @@ export default function Dashboard() {
                           <div className="text-xs font-bold mb-1 opacity-60">#{item.id}</div>
                           <div className="font-bold">{item.customer_name}</div>
                           <div className={`text-xs mt-1 font-medium ${textMuted}`}>
-                            {formatTanggalWaktu(item.created_at)}
+                            {item.created_at ? new Date(item.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : "-"} WIB
                           </div>
                         </td>
                         <td className="p-5 min-w-[200px]">
@@ -505,7 +560,7 @@ export default function Dashboard() {
                         </td>
                         <td className="p-5 text-center align-middle min-w-[150px]">
                           {item.status_logistik !== 'selesai' ? (
-                            <button onClick={() => bukaModalFoto(item.id, item.customer_name)} className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 text-white px-4 py-2 rounded-xl text-xs md:text-sm font-bold shadow-lg transition-all active:scale-95 whitespace-nowrap border border-white/20">Kirim Paket 🚀</button>
+                            <button onClick={() => bukaModalFoto(item.id, item.customer_name)} className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white px-4 py-2 rounded-xl text-xs md:text-sm font-bold shadow-lg transition-all active:scale-95 whitespace-nowrap border border-white/20">Kirim Paket 🚀</button>
                           ) : (
                             <button onClick={() => lihatFotoBukti(item.id)} className={`text-xs font-bold px-3 py-2 rounded-lg transition-all ${glassPanel} hover:bg-white/10`}>👁️ Cek Foto</button>
                           )}
@@ -541,7 +596,7 @@ export default function Dashboard() {
                       </div>
                       
                       <div className={`flex justify-between items-center text-xs font-medium ${textMuted}`}>
-                        <span>🕒 {formatTanggalWaktu(item.created_at)}</span>
+                        <span>🕒 {item.created_at ? new Date(item.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : "-"} WIB</span>
                         {item.status_logistik !== 'selesai' && (
                           <span className={`font-bold px-2 py-1 rounded border flex items-center gap-1 bg-red-500/10 text-red-500 dark:text-red-400 border-red-500/20`}>
                             <span className="animate-pulse">⏳</span> {hitungWaktuTunggu(item.created_at)}
@@ -563,97 +618,77 @@ export default function Dashboard() {
         )}
       </main>
 
-      {/* MODAL PESANAN BARU (KINI MENGGUNAKAN DROPDOWN) */}
+      {/* ==========================================
+          MODAL POS PESANAN BARU (KALKULATOR OTOMATIS)
+          ========================================== */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className={`rounded-3xl w-full max-w-md overflow-visible ${glassPanel} border-white/20 shadow-2xl`}>
             <div className="bg-white/10 border-b border-white/10 p-5 flex justify-between items-center rounded-t-3xl">
-              <h2 className="font-bold text-lg">➕ Buat Pesanan Baru</h2>
+              <h2 className="font-bold text-lg">🛍️ POS - Buat Pesanan Baru</h2>
               <button onClick={() => setIsModalOpen(false)} className="opacity-70 hover:opacity-100 text-2xl">×</button>
             </div>
-            <form onSubmit={handleTambahPesanan} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+            
+            <form onSubmit={handleTambahPesanan} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
               
-              {/* --- BAGIAN YANG DIUBAH: DROPDOWN NAMA PELANGGAN --- */}
-              <div className="relative">
-                <label className="block text-sm font-bold mb-1 opacity-80">Pilih Pelanggan (Dari Database)</label>
-                <select 
-                  required 
-                  value={formData.customer_name} 
-                  onChange={(e) => { 
-                    const selectedName = e.target.value;
-                    const selectedCust = customers.find(c => c.name === selectedName);
-                    if (selectedCust) {
-                      setFormData({
-                        ...formData, 
-                        customer_name: selectedCust.name, 
-                        alamat_detail: selectedCust.alamat_detail, 
-                        jarak_ke_toko_km: selectedCust.jarak_ke_toko_km
-                      });
-                    }
-                  }} 
-                  className={`w-full py-3 px-4 rounded-xl outline-none transition-all cursor-pointer appearance-none ${glassInput}`} 
-                >
-                  <option value="" disabled className="bg-slate-900 text-gray-400">
-                    -- Klik untuk memilih pelanggan --
-                  </option>
-                  {customers.map(c => (
-                    <option key={c.id} value={c.name} className="bg-slate-900 text-white font-bold">
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-                {/* Ikon panah bawah untuk mempercantik Dropdown */}
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 pt-6 text-white opacity-50">
-                  ▼
-                </div>
-              </div>
-              {/* --------------------------------------------------- */}
-
               <div>
-                <label className="block text-sm font-bold mb-1 opacity-80">Alamat Lengkap</label>
-                <textarea 
-                  required 
-                  value={formData.alamat_detail} 
-                  onChange={(e) => setFormData({...formData, alamat_detail: e.target.value})} 
-                  className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} 
-                  rows={2}
-                ></textarea>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-bold mb-1 opacity-80">Jarak (KM)</label>
-                  <input 
-                    type="number" 
-                    step="0.1" 
-                    required 
-                    value={formData.jarak_ke_toko_km} 
-                    onChange={(e) => setFormData({...formData, jarak_ke_toko_km: e.target.value})} 
-                    className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} 
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold mb-1 opacity-80">Berat (KG)</label>
-                  <input 
-                    type="number" 
-                    step="0.1" 
-                    required 
-                    value={formData.berat_pesanan_kg} 
-                    onChange={(e) => setFormData({...formData, berat_pesanan_kg: e.target.value})} 
-                    className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} 
-                  />
+                <label className="block text-sm font-bold mb-2 opacity-80">Jenis Layanan</label>
+                <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-black/20 border border-white/5">
+                  <button type="button" onClick={() => setFormData({...formData, tipe_layanan: "kiloan", harga_per_unit: "7000", berat_pesanan_kg: ""})} className={`py-2 rounded-lg text-sm font-bold transition-all ${formData.tipe_layanan === "kiloan" ? "bg-blue-600 text-white shadow" : "opacity-60"}`}>🧺 Kiloan</button>
+                  <button type="button" onClick={() => setFormData({...formData, tipe_layanan: "satuan", harga_per_unit: "15000", berat_pesanan_kg: ""})} className={`py-2 rounded-lg text-sm font-bold transition-all ${formData.tipe_layanan === "satuan" ? "bg-purple-600 text-white shadow" : "opacity-60"}`}>👔 Satuan</button>
                 </div>
               </div>
 
-              <div className="pt-4 flex gap-3">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 font-bold py-3 rounded-xl transition-all bg-black/10 hover:bg-black/20 dark:bg-white/5 dark:hover:bg-white/10 border border-white/10">Batal</button>
-                <button type="submit" disabled={isSubmitting} className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 font-bold py-3 rounded-xl hover:opacity-90 transition-all disabled:opacity-50 border border-white/20 shadow-lg text-white">Simpan</button>
+              <div className="relative">
+                <label className="block text-sm font-bold mb-1 opacity-80">Nama Pelanggan</label>
+                <input type="text" required value={formData.customer_name} onChange={(e) => { setFormData({...formData, customer_name: e.target.value}); setShowSuggestions(true); }} onFocus={() => setShowSuggestions(true)} onBlur={() => setTimeout(() => setShowSuggestions(false), 200)} className={`w-full py-3 px-4 rounded-xl outline-none transition-all ${glassInput}`} placeholder="Ketik nama pelanggan..." />
+                {showSuggestions && formData.customer_name && customers.filter(c => c.name.toLowerCase().includes(formData.customer_name.toLowerCase())).length > 0 && (
+                  <ul className="absolute z-50 w-full mt-2 rounded-xl max-h-48 overflow-y-auto backdrop-blur-2xl bg-gray-900/90 border border-white/10 shadow-2xl text-white">
+                    {customers.filter(c => c.name.toLowerCase().includes(formData.customer_name.toLowerCase())).map(c => (
+                      <li key={c.id} onClick={() => { setFormData({...formData, customer_name: c.name, alamat_detail: c.alamat_detail, jarak_ke_toko_km: c.jarak_ke_toko_km, latitude: c.latitude, longitude: c.longitude}); setShowSuggestions(false); }} className="px-4 py-3 cursor-pointer text-sm font-bold border-b border-white/5 last:border-b-0 hover:bg-white/10 transition-colors">
+                        {c.name} <span className="block text-xs font-normal opacity-60 truncate">{c.alamat_detail}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div><label className="block text-sm font-bold mb-1 opacity-80">Alamat Lengkap</label><textarea required value={formData.alamat_detail} onChange={(e) => setFormData({...formData, alamat_detail: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} rows={2} placeholder="Alamat pengiriman..."></textarea></div>
+              <div><label className="block text-sm font-bold mb-1 opacity-80">Jarak Antar (KM)</label><input type="number" step="0.1" required value={formData.jarak_ke_toko_km} onChange={(e) => setFormData({...formData, jarak_ke_toko_km: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} /></div>
+
+              <div className="grid grid-cols-2 gap-4 bg-white/5 p-4 rounded-2xl border border-white/5">
+                <div>
+                  <label className="block text-xs font-bold mb-1 text-slate-300">{formData.tipe_layanan === "kiloan" ? "⚖️ Berat (KG)" : "🔢 Jumlah (Pcs)"}</label>
+                  <input type="number" step={formData.tipe_layanan === "kiloan" ? "0.1" : "1"} required placeholder={formData.tipe_layanan === "kiloan" ? "0.0" : "0"} value={formData.berat_pesanan_kg} onChange={(e) => setFormData({...formData, berat_pesanan_kg: e.target.value})} className={`w-full px-4 py-2.5 text-sm rounded-xl outline-none transition-all ${glassInput}`} />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold mb-1 text-slate-300">{formData.tipe_layanan === "kiloan" ? "💰 Harga / KG" : "💰 Harga / Pcs"}</label>
+                  <input type="number" required value={formData.harga_per_unit} onChange={(e) => setFormData({...formData, harga_per_unit: e.target.value})} className={`w-full px-4 py-2.5 text-sm rounded-xl outline-none transition-all ${glassInput}`} />
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-r from-slate-900 to-indigo-950/60 p-4 rounded-2xl border border-indigo-500/20 flex justify-between items-center shadow-inner">
+                <span className="text-sm font-medium text-indigo-300">Total Transaksi:</span>
+                <span className="text-2xl font-black text-emerald-400">Rp {formData.total_harga.toLocaleString("id-ID")}</span>
+              </div>
+
+              <div className="text-center opacity-40 text-xs">📍 Koordinat lokasi otomatis sinkron dari database pelanggan</div>
+
+              <div className="pt-2 flex gap-3">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 font-bold py-3 rounded-xl transition-all bg-white/5 hover:bg-white/10 border border-white/10">Batal</button>
+                <button type="submit" disabled={isSubmitting} className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 font-bold py-3 rounded-xl hover:opacity-90 transition-all disabled:opacity-50 border border-white/20 shadow-lg text-white">
+                  {isSubmitting ? "Menyimpan..." : "Simpan Nota 🧾"}
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-     {isCustomerModalOpen && (
+      {/* ==========================================
+          MODAL TAMBAH CUSTOMER BARU (Tanpa Lat/Long)
+          ========================================== */}
+      {isCustomerModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className={`rounded-3xl w-full max-w-md overflow-hidden ${glassPanel} border-white/20 shadow-2xl`}>
             <div className="bg-white/10 border-b border-white/10 p-5 flex justify-between items-center rounded-t-3xl">
@@ -664,7 +699,7 @@ export default function Dashboard() {
               <div><label className="block text-sm font-bold mb-1 opacity-80">Nama Lengkap</label><input type="text" required value={customerFormData.name} onChange={(e) => setCustomerFormData({...customerFormData, name: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} /></div>
               <div><label className="block text-sm font-bold mb-1 opacity-80">Alamat Default</label><textarea required value={customerFormData.alamat_detail} onChange={(e) => setCustomerFormData({...customerFormData, alamat_detail: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} rows={2}></textarea></div>
               <div><label className="block text-sm font-bold mb-1 opacity-80">Jarak Default (KM)</label><input type="number" step="0.1" required value={customerFormData.jarak_ke_toko_km} onChange={(e) => setCustomerFormData({...customerFormData, jarak_ke_toko_km: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none transition-all ${glassInput}`} /></div>
-
+              
               <div className="pt-4 flex gap-3">
                 <button type="button" onClick={() => setIsCustomerModalOpen(false)} className={`flex-1 font-bold py-3 rounded-xl transition-all bg-black/10 hover:bg-black/20 dark:bg-white/5 dark:hover:bg-white/10 border border-white/10`}>Batal</button>
                 <button type="submit" disabled={isSubmittingCustomer} className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 font-bold py-3 rounded-xl hover:opacity-90 transition-all disabled:opacity-50 shadow-lg border border-white/20 text-white">Simpan</button>
@@ -674,6 +709,9 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* ==========================================
+          MODAL KAMERA BUKTI PENGIRIMAN
+          ========================================== */}
       {isPhotoModalOpen && selectedOrder && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className={`rounded-3xl w-full max-w-sm overflow-hidden ${glassPanel} border-white/20 shadow-2xl text-white`}>

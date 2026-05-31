@@ -13,14 +13,21 @@ const telegramToken = "8677964593:AAET5YSSs216dA8sWtSJKLWWJED03v4qGVc";
 const chatId = "1556373134"; 
 const GOOGLE_MAPS_API_KEY = "MASUKKAN_API_KEY_DISINI"; 
 
+// 🔐 CUSTOM PIN 6-ANGKA UNTUK MENU RAHASIA
+const SECURITY_PIN = "123456"; 
+
 const defaultMapCenter = { lat: -6.2088, lng: 106.8456 }; 
 const mapContainerStyle = { width: "100%", height: "600px", borderRadius: "16px" };
 
 export default function Dashboard() {
   const router = useRouter();
 
+  // STATE DATABASE
   const [pesanan, setPesanan] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]); 
+  const [pengeluaran, setPengeluaran] = useState<any[]>([]); // DATA PENGELUARAN BARU
+  const [auditLogs, setAuditLogs] = useState<any[]>([]); // DATA LOG AKTIVITAS BARU
+
   const [session, setSession] = useState<any>(null); 
   const [loading, setLoading] = useState(true); 
   
@@ -29,8 +36,13 @@ export default function Dashboard() {
   const [isDarkMode, setIsDarkMode] = useState(true); 
   const [activeMenu, setActiveMenu] = useState("Dashboard");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
+
+  // STATE KEAMANAN (SECURITY LOCK)
+  const [isSecureUnlocked, setIsSecureUnlocked] = useState(false);
+  const [isPinModalOpen, setIsPinModalOpen] = useState(false);
+  const [inputPin, setInputPin] = useState("");
+  const [pendingMenu, setPendingMenu] = useState("");
   
-  // FIX: Default dibuat KOSONG agar seluruh data muncul saat pertama kali load
   const [sortBy, setSortBy] = useState<"terbaru" | "terdekat">("terbaru");
   const [filterTanggal, setFilterTanggal] = useState<string>(""); 
 
@@ -40,6 +52,9 @@ export default function Dashboard() {
 
   // STATE INVENTARIS GUDANG
   const [inventory, setInventory] = useState({ deterjen: 4850, parfum: 1920, plastik: 94 });
+
+  // STATE PENGELUARAN BARU
+  const [formPengeluaran, setFormPengeluaran] = useState({ kategori: "Listrik (Token/Pasca)", deskripsi: "", nominal: "" });
 
   // STATE FORM & POS
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -85,6 +100,43 @@ export default function Dashboard() {
   }
 
   // ==========================================
+  // FUNGSI PENCATATAN AKTIVITAS (AUDIT LOG)
+  // ==========================================
+  const catatLog = async (action: string, details: string) => {
+    try { await supabase.from("audit_logs").insert([{ action, details }]); } catch (error) { console.error("Gagal mencatat log", error); }
+  };
+
+  // ==========================================
+  // MANAJEMEN MENU & SECURITY LOCK
+  // ==========================================
+  const handleMenuClick = (menu: string) => {
+    const secureMenus = ["Calendar", "Pengeluaran", "Data Log"];
+    if (secureMenus.includes(menu) && !isSecureUnlocked) {
+      setPendingMenu(menu);
+      setIsPinModalOpen(true);
+      setIsSidebarOpen(false);
+    } else {
+      setActiveMenu(menu);
+      setIsSidebarOpen(false);
+    }
+  };
+
+  const handleVerifyPin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (inputPin === SECURITY_PIN) {
+      setIsSecureUnlocked(true);
+      setIsPinModalOpen(false);
+      setActiveMenu(pendingMenu);
+      setInputPin("");
+      catatLog("Security Unlock", `Berhasil membuka menu terkunci (${pendingMenu})`);
+    } else {
+      alert("❌ PIN Salah! Akses Ditolak.");
+      setInputPin("");
+      catatLog("Security Breach", `Percobaan akses ilegal ke menu ${pendingMenu} dengan PIN yang salah.`);
+    }
+  };
+
+  // ==========================================
   // KANBAN GUARDRAILS + SMART AUTOMATION
   // ==========================================
   const KANBAN_COLUMNS = ["Antrean", "Sedang Dicuci", "Disetrika", "Packing", "Siap Kirim", "selesai"];
@@ -107,6 +159,7 @@ export default function Dashboard() {
     const { error } = await supabase.from("orders").update({ status_logistik: newStatus }).eq("id", id);
     if (error) { alert("Gagal memperbarui status!"); ambilData(); return; }
 
+    catatLog("Update Status", `Pesanan #${id} (${orderLama.customer_name}) dipindah ke [${newStatus}]`);
     if (newStatus === "Siap Kirim" && orderLama.status_logistik !== "Siap Kirim") kirimNotifSiapKirim(orderLama);
   };
 
@@ -116,7 +169,10 @@ export default function Dashboard() {
     
     const { error } = await supabase.from("orders").update({ status_pembayaran: "Lunas" }).eq("id", id);
     if (error) { alert("Gagal melunasi transaksi!"); ambilData(); }
-    else { alert("🎉 Pembayaran dikonfirmasi LUNAS! Papan operasional terbuka kembali."); }
+    else { 
+      catatLog("Pelunasan", `Kasir melunasi pesanan #${id} secara instan di papan operasional.`);
+      alert("🎉 Pembayaran dikonfirmasi LUNAS! Papan operasional terbuka kembali."); 
+    }
   };
 
   const kirimNotifSiapKirim = async (order: any) => {
@@ -155,11 +211,19 @@ export default function Dashboard() {
   async function ambilData() {
     const { data: ordersData } = await supabase.from("orders").select("*").order("id", { ascending: false });
     if (Array.isArray(ordersData)) setPesanan(ordersData);
+    
     const { data: customersData } = await supabase.from("customers").select("*").order("name", { ascending: true });
     if (Array.isArray(customersData)) setCustomers(customersData);
+
+    const { data: expData } = await supabase.from("expenses").select("*").order("id", { ascending: false });
+    if (Array.isArray(expData)) setPengeluaran(expData);
+
+    const { data: logData } = await supabase.from("audit_logs").select("*").order("id", { ascending: false }).limit(300);
+    if (Array.isArray(logData)) setAuditLogs(logData);
   }
 
   async function handleLogout() {
+    catatLog("Logout", "Admin/Kasir keluar dari sistem.");
     await supabase.auth.signOut(); router.push("/login");
   }
 
@@ -196,9 +260,33 @@ export default function Dashboard() {
 
       await fetch(`https://api.telegram.org/bot${telegramToken}/sendPhoto`, { method: "POST", body: fileData });
       if (livePreviewUrl) setBuktiFotoUrls(prev => ({ ...prev, [selectedOrder.id]: livePreviewUrl }));
+      
+      catatLog("Pesanan Selesai", `Pesanan #${selectedOrder.id} selesai. Bukti foto diunggah.`);
       alert(`🎉 Pengiriman Berhasil!`);
     } catch (err) { alert("Gagal memproses penyelesaian."); } 
     finally { setIsUploadingPhoto(false); setIsPhotoModalOpen(false); setSelectedOrder(null); setDeliveryPhoto(null); setLivePreviewUrl(null); }
+  }
+
+  // ==========================================
+  // FITUR SIMPAN PENGELUARAN BARU
+  // ==========================================
+  async function handleSimpanPengeluaran(e: React.FormEvent) {
+    e.preventDefault();
+    if (!formPengeluaran.nominal) return;
+    try {
+      const { error } = await supabase.from("expenses").insert([{
+        kategori: formPengeluaran.kategori,
+        deskripsi: formPengeluaran.deskripsi,
+        nominal: Number(formPengeluaran.nominal),
+        created_at: new Date().toISOString()
+      }]);
+      if (error) throw new Error(error.message);
+      
+      catatLog("Uang Keluar", `Kategori: ${formPengeluaran.kategori} | Rp ${Number(formPengeluaran.nominal).toLocaleString('id-ID')} | Ket: ${formPengeluaran.deskripsi}`);
+      alert("✅ Pengeluaran operasional berhasil dicatat!");
+      setFormPengeluaran({ kategori: "Listrik (Token/Pasca)", deskripsi: "", nominal: "" });
+      ambilData();
+    } catch (err: any) { alert("Gagal menyimpan pengeluaran: " + err.message); }
   }
 
   // ==========================================
@@ -230,7 +318,7 @@ export default function Dashboard() {
           total_harga: formData.total_harga,
           rincian_item: rincianItem,
           status_logistik: "Antrean",
-          created_at: new Date().toISOString() // FIX: INJEKSI WAKTU SECARA PAKSA!
+          created_at: new Date().toISOString()
         }
       ]).select("*");
       
@@ -251,6 +339,9 @@ export default function Dashboard() {
       });
 
       const orderId = newOrderData && newOrderData[0] ? newOrderData[0].id : "BARU";
+      
+      catatLog("Pesanan Baru", `Input Order #${orderId} - ${formData.customer_name} (Rp${formData.total_harga}) - Status: ${formData.status_pembayaran}`);
+
       const notaDigital = `🧾 *NOTA ${formData.status_pembayaran !== 'Belum Bayar' ? '& BUKTI PEMBAYARAN ' : 'PESANAN '}(#${orderId})* 🧾\n👤 *Pelanggan:* ${formData.customer_name}\n💳 *Keuangan:* ${formData.status_pembayaran.toUpperCase()}\n💰 *TOTAL TAGIHAN: Rp ${formData.total_harga.toLocaleString('id-ID')}*`;
 
       if (formData.status_pembayaran !== "Belum Bayar" && paymentPhoto) {
@@ -278,7 +369,10 @@ export default function Dashboard() {
     const { error } = await supabase.from("customers").insert([{ name: customerFormData.name, alamat_detail: customerFormData.alamat_detail, jarak_ke_toko_km: Number(customerFormData.jarak_ke_toko_km) }]);
     setIsSubmittingCustomer(false);
     if (error) alert("Gagal. Error: " + error.message);
-    else { setIsCustomerModalOpen(false); setCustomerFormData({ name: "", alamat_detail: "", jarak_ke_toko_km: "" }); ambilData(); }
+    else { 
+      catatLog("Pelanggan Baru", `Mendaftarkan pelanggan baru: ${customerFormData.name}`);
+      setIsCustomerModalOpen(false); setCustomerFormData({ name: "", alamat_detail: "", jarak_ke_toko_km: "" }); ambilData(); 
+    }
   }
 
   async function generateDanKirimLaporan() {
@@ -295,17 +389,24 @@ export default function Dashboard() {
       fileLaporan.append("chat_id", chatId); fileLaporan.append("document", blob, `Laporan_${filterTanggal || "Semua"}.csv`);
       fileLaporan.append("caption", `📊 REKAP LAPORAN LOGISTIK & FINANSIAL\n\nTotal Data: ${dataTersaring.length} pesanan.`);
       await fetch(`https://api.telegram.org/bot${telegramToken}/sendDocument`, { method: "POST", body: fileLaporan });
+      catatLog("Export Data", "Admin mengunduh laporan excel pesanan.");
       alert("Laporan Excel berhasil dikirim ke Telegram! 🚀");
     } catch (err) { alert("Kesalahan sistem."); } finally { setIsExporting(false); }
   }
 
   // ==========================================
-  // FIX LOGIKA KALENDER: Membaca Tanggal dengan Aman (Safe Parsing)
+  // FIX LOGIKA KALENDER & PENGELUARAN
   // ==========================================
   const pesananBulanIni = pesanan.filter(p => {
     const tglRaw = p.created_at || p.createdAt;
     if (!tglRaw) return false;
     const d = new Date(tglRaw);
+    return d.getMonth() === calendarMonth && d.getFullYear() === calendarYear;
+  });
+
+  const pengeluaranBulanIni = pengeluaran.filter(p => {
+    if(!p.created_at) return false;
+    const d = new Date(p.created_at);
     return d.getMonth() === calendarMonth && d.getFullYear() === calendarYear;
   });
 
@@ -326,7 +427,10 @@ export default function Dashboard() {
   }
 
   const totalBulanQty = calendarCards.reduce((acc, curr) => acc + curr.qty, 0);
-  const totalBulanRp = calendarCards.reduce((acc, curr) => acc + curr.total, 0);
+  const totalBulanRp = pesananBulanIni.reduce((acc, curr) => acc + Number(curr.total_harga || 0), 0);
+  const totalPengeluaranBulanRp = pengeluaranBulanIni.reduce((acc, curr) => acc + Number(curr.nominal || 0), 0);
+  const labaBersih = totalBulanRp - totalPengeluaranBulanRp;
+  
   const namaBulan = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 
 
@@ -334,7 +438,7 @@ export default function Dashboard() {
   if (!session) return null;
 
   // ==========================================
-  // FIX FILTERING DASHBOARD & SORTING
+  // FILTERING DASHBOARD & SORTING
   // ==========================================
   const dataTersaring = [...pesanan]
     .filter((item) => filterStatus === "semua" ? true : item.status_logistik === filterStatus)
@@ -349,7 +453,7 @@ export default function Dashboard() {
     .sort((a, b) => {
       const timeA = new Date(a.created_at || a.createdAt || 0).getTime();
       const timeB = new Date(b.created_at || b.createdAt || 0).getTime();
-      return sortBy === "terbaru" ? timeB - timeA : timeA - timeB; // FIX SORTING TANGGAL
+      return sortBy === "terbaru" ? timeB - timeA : timeA - timeB; 
     });
 
   const dynamicBg = isDarkMode ? "bg-gradient-to-br from-indigo-950 via-gray-900 to-purple-950 text-white" : "bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-100 text-gray-900";
@@ -364,23 +468,44 @@ export default function Dashboard() {
       <button onClick={() => setIsSidebarOpen(true)} className={`md:hidden fixed top-4 left-4 z-40 p-3 rounded-xl ${glassPanel} active:scale-95`}><span className="text-xl">☰</span></button>
       {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40" />}
 
+      {/* MODAL PIN KEAMANAN MENU */}
+      {isPinModalOpen && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+          <form onSubmit={handleVerifyPin} className="bg-gray-900 border border-white/20 p-8 rounded-3xl w-full max-w-sm text-center shadow-2xl">
+            <h2 className="text-2xl font-black text-white mb-2">🔐 Otorisasi PIN</h2>
+            <p className="text-sm text-gray-400 mb-6">Masukkan 6 digit PIN untuk membuka menu <strong>{pendingMenu}</strong></p>
+            <input type="password" required maxLength={6} value={inputPin} onChange={e => setInputPin(e.target.value.replace(/\D/g, ''))} className="w-full text-center text-3xl tracking-[1em] font-black bg-black/50 border border-white/20 text-white rounded-xl py-4 mb-6 outline-none focus:border-blue-500" placeholder="••••••" />
+            <div className="flex gap-3">
+              <button type="button" onClick={() => { setIsPinModalOpen(false); setInputPin(""); }} className="flex-1 py-3 bg-white/10 text-white font-bold rounded-xl hover:bg-white/20">Batal</button>
+              <button type="submit" className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-500 shadow-lg">Buka Kunci</button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* SIDEBAR NAVIGATION BARU */}
       <aside className={`fixed md:relative inset-y-0 left-0 z-50 w-64 flex flex-col justify-between ${glassPanel} border-r border-r-white/10 md:m-4 md:rounded-3xl transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}>
         <button onClick={() => setIsSidebarOpen(false)} className="md:hidden absolute top-4 right-4 text-white opacity-70 text-2xl font-bold">✕</button>
         <div>
           <div className="p-6 flex items-center gap-3 mt-4 md:mt-0">
             <div className="w-10 h-10 bg-gradient-to-tr from-blue-600 to-purple-500 text-white rounded-xl flex items-center justify-center font-bold text-xl shadow-lg">L</div>
-            <div><h2 className="font-extrabold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">LaundroAI</h2><p className={`text-xs ${textMuted}`}>Logistics System</p></div>
+            <div><h2 className="font-extrabold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">LaundroAI</h2><p className={`text-xs ${textMuted}`}>Micro ERP</p></div>
           </div>
           <nav className="mt-4 px-4 space-y-2">
-            {['Dashboard', 'Tracking', 'Database Customers', 'Calendar', 'Inventory'].map((menu) => (
-              <button key={menu} onClick={() => { setActiveMenu(menu); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold transition-all duration-300 ${activeMenu === menu ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30 border border-white/20" : `${isDarkMode ? 'text-gray-400 hover:bg-white/10' : 'text-gray-600 hover:bg-white/40'}`}`}>
-                {menu === 'Dashboard' && "📊"} {menu === 'Tracking' && "📍"} {menu === 'Database Customers' && "👥"} {menu === 'Calendar' && "📅"} {menu === 'Inventory' && "📦"}
-                <span className="text-sm">
-                  {menu === 'Calendar' ? 'Kalender Income' : menu === 'Inventory' ? 'Stok Gudang' : menu}
-                </span>
-              </button>
-            ))}
+            {['Dashboard', 'Tracking', 'Database Customers', 'Calendar', 'Inventory', 'Pengeluaran', 'Data Log'].map((menu) => {
+              const isLocked = !isSecureUnlocked && ["Calendar", "Pengeluaran", "Data Log"].includes(menu);
+              return (
+                <button key={menu} onClick={() => handleMenuClick(menu)} className={`w-full flex items-center justify-between px-4 py-3 rounded-xl font-semibold transition-all duration-300 ${activeMenu === menu ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30 border border-white/20" : `${isDarkMode ? 'text-gray-400 hover:bg-white/10' : 'text-gray-600 hover:bg-white/40'}`}`}>
+                  <div className="flex items-center gap-3">
+                    {menu === 'Dashboard' && "📊"} {menu === 'Tracking' && "📍"} {menu === 'Database Customers' && "👥"} {menu === 'Calendar' && "📅"} {menu === 'Inventory' && "📦"} {menu === 'Pengeluaran' && "💸"} {menu === 'Data Log' && "🛡️"}
+                    <span className="text-sm truncate max-w-[120px]">
+                      {menu === 'Calendar' ? 'Kalender Income' : menu === 'Inventory' ? 'Stok Gudang' : menu}
+                    </span>
+                  </div>
+                  {isLocked && <span className="text-xs opacity-50">🔒</span>}
+                </button>
+              );
+            })}
           </nav>
         </div>
         <div className="p-4 space-y-3">
@@ -391,8 +516,81 @@ export default function Dashboard() {
 
       <main className="flex-1 overflow-y-auto p-6 lg:p-10 pt-20 md:pt-10 scroll-smooth z-10 w-full max-w-full">
         
-        {/* MODUL INVENTARIS GUDANG */}
-        {activeMenu === "Inventory" ? (
+        {/* MODUL PENGELUARAN */}
+        {activeMenu === "Pengeluaran" ? (
+          <div className="max-w-7xl mx-auto flex flex-col h-full">
+            <h1 className="text-3xl font-extrabold tracking-tight mb-6">Catat Pengeluaran 💸</h1>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className={`md:col-span-1 p-6 rounded-3xl ${glassPanel} border-t-4 border-red-500 h-fit`}>
+                <h3 className="font-bold text-lg mb-4 border-b border-white/10 pb-2">Form Kas Keluar</h3>
+                <form onSubmit={handleSimpanPengeluaran} className="space-y-4">
+                  <div>
+                    <label className="text-xs font-bold opacity-70 block mb-1">Kategori Pengeluaran</label>
+                    <select value={formPengeluaran.kategori} onChange={e => setFormPengeluaran({...formPengeluaran, kategori: e.target.value})} className={`w-full p-3 rounded-xl ${glassInput} outline-none cursor-pointer`}>
+                      <option className="text-black">Listrik (Token/Pasca)</option>
+                      <option className="text-black">Bensin Operasional</option>
+                      <option className="text-black">Restock Deterjen</option>
+                      <option className="text-black">Restock Parfum</option>
+                      <option className="text-black">Restock Plastik</option>
+                      <option className="text-black">Lain-Lain</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold opacity-70 block mb-1">Total Nominal (Rp)</label>
+                    <input type="number" required value={formPengeluaran.nominal} onChange={e => setFormPengeluaran({...formPengeluaran, nominal: e.target.value})} className={`w-full p-3 rounded-xl ${glassInput}`} placeholder="50000" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold opacity-70 block mb-1">Deskripsi / Keterangan</label>
+                    <textarea required value={formPengeluaran.deskripsi} onChange={e => setFormPengeluaran({...formPengeluaran, deskripsi: e.target.value})} className={`w-full p-3 rounded-xl ${glassInput}`} rows={2} placeholder="Isi pertalite driver Budi..."></textarea>
+                  </div>
+                  <button type="submit" className="w-full bg-gradient-to-r from-red-600 to-rose-600 hover:opacity-90 text-white font-bold py-3 rounded-xl shadow-lg border border-white/20">Simpan Pengeluaran</button>
+                </form>
+              </div>
+              <div className={`md:col-span-2 p-6 rounded-3xl ${glassPanel}`}>
+                <h3 className="font-bold text-lg mb-4 border-b border-white/10 pb-2">Riwayat Pengeluaran (Bulan Ini)</h3>
+                <div className="overflow-x-auto max-h-[400px]">
+                  <table className="w-full text-left text-sm">
+                    <thead className={tableHeaderGlass}>
+                      <tr><th className="p-3">Tanggal</th><th className="p-3">Kategori</th><th className="p-3">Deskripsi</th><th className="p-3 text-right">Nominal</th></tr>
+                    </thead>
+                    <tbody className={`divide-y ${isDarkMode ? 'divide-white/5' : 'divide-black/5'}`}>
+                      {pengeluaranBulanIni.map(ex => (
+                        <tr key={ex.id} className={rowHover}>
+                          <td className="p-3 opacity-70 text-xs whitespace-nowrap">{new Date(ex.created_at).toLocaleDateString('id-ID', {day: '2-digit', month: 'short'})}</td>
+                          <td className="p-3 font-bold text-red-400">{ex.kategori}</td>
+                          <td className="p-3 text-xs">{ex.deskripsi}</td>
+                          <td className="p-3 font-black text-right text-red-400 whitespace-nowrap">Rp {Number(ex.nominal).toLocaleString('id-ID')}</td>
+                        </tr>
+                      ))}
+                      {pengeluaranBulanIni.length === 0 && <tr><td colSpan={4} className="text-center p-6 opacity-50">Belum ada data pengeluaran bulan ini.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : activeMenu === "Data Log" ? (
+          <div className="max-w-7xl mx-auto h-full flex flex-col">
+            <h1 className="text-3xl font-extrabold tracking-tight mb-2">Audit Trail Log 🛡️</h1>
+            <p className="text-sm opacity-60 mb-6">Sistem merekam semua aktivitas user secara real-time untuk mencegah fraud.</p>
+            <div className={`flex-1 overflow-auto rounded-3xl ${glassPanel} p-4`}>
+              <table className="w-full text-left text-sm">
+                <thead className={`${tableHeaderGlass} sticky top-0 z-10 backdrop-blur-xl`}>
+                  <tr><th className="p-4 rounded-tl-xl">Waktu (Timestamp)</th><th className="p-4">Jenis Aksi</th><th className="p-4 rounded-tr-xl">Detail Aktivitas</th></tr>
+                </thead>
+                <tbody className={`divide-y ${isDarkMode ? 'divide-white/5' : 'divide-black/5'}`}>
+                  {auditLogs.map(log => (
+                    <tr key={log.id} className={`${rowHover} transition-colors`}>
+                      <td className="p-4 whitespace-nowrap text-xs opacity-70 font-mono">{new Date(log.created_at).toLocaleString('id-ID')}</td>
+                      <td className="p-4 whitespace-nowrap"><span className="bg-blue-500/10 px-2 py-1 rounded text-xs font-bold text-blue-400 border border-blue-500/20">{log.action}</span></td>
+                      <td className="p-4 text-xs font-medium">{log.details}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : activeMenu === "Inventory" ? (
           <div className="max-w-7xl mx-auto flex flex-col h-full">
             <div className="mb-6"><h1 className="text-3xl font-extrabold tracking-tight">Stok Gudang 📦</h1></div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -404,7 +602,7 @@ export default function Dashboard() {
         ) : activeMenu === "Calendar" ? (
           <div className="max-w-7xl mx-auto flex flex-col h-full">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 shrink-0">
-              <div><h1 className="text-3xl font-extrabold tracking-tight">Kalender Pendapatan 📅</h1><p className={`text-sm mt-1 ${textMuted}`}>Pantau rekap transaksi harian berdasarkan tanggal pembuatan.</p></div>
+              <div><h1 className="text-3xl font-extrabold tracking-tight">Laporan Laba & Rugi 📅</h1><p className={`text-sm mt-1 ${textMuted}`}>Pantau rekap transaksi dan keuntungan toko bersih harian.</p></div>
               <div className="flex gap-2">
                 <select value={calendarMonth} onChange={e => setCalendarMonth(Number(e.target.value))} className={`px-4 py-2 rounded-xl font-bold outline-none cursor-pointer ${glassPanel} text-black dark:text-white`}><value></value>
                   {namaBulan.map((m, i) => <option key={i} value={i} className="text-black">{m}</option>)}
@@ -412,9 +610,11 @@ export default function Dashboard() {
                 <input type="number" value={calendarYear} onChange={e => setCalendarYear(Number(e.target.value))} className={`px-4 py-2 rounded-xl font-bold outline-none w-24 ${glassPanel}`} />
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-              <div className={`p-5 rounded-2xl ${glassPanel} border-l-4 border-l-blue-500 flex items-center justify-between`}><div><p className={`text-xs font-bold uppercase tracking-wider ${textMuted}`}>Total Transaksi Bulan Ini</p><p className="text-2xl font-black mt-1">{totalBulanQty} <span className="text-sm font-medium opacity-50">Nota</span></p></div><div className="text-4xl opacity-20">🧾</div></div>
-              <div className={`p-5 rounded-2xl ${glassPanel} border-l-4 border-l-emerald-500 flex items-center justify-between`}><div><p className={`text-xs font-bold uppercase tracking-wider ${textMuted}`}>Total Pendapatan Bulan Ini</p><p className="text-2xl font-black mt-1 text-emerald-400">Rp {totalBulanRp.toLocaleString("id-ID")}</p></div><div className="text-4xl opacity-20">💰</div></div>
+            {/* KARTU RINGKASAN KEUNTUNGAN BERSIH */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+              <div className={`p-5 rounded-2xl ${glassPanel} border-l-4 border-emerald-500`}><p className="text-xs font-bold uppercase tracking-wider opacity-70">Total Income Kotor</p><p className="text-2xl font-black mt-1 text-emerald-400">Rp {totalBulanRp.toLocaleString("id-ID")}</p></div>
+              <div className={`p-5 rounded-2xl ${glassPanel} border-l-4 border-red-500`}><p className="text-xs font-bold uppercase tracking-wider opacity-70">Total Pengeluaran</p><p className="text-2xl font-black mt-1 text-red-400">Rp {totalPengeluaranBulanRp.toLocaleString("id-ID")}</p></div>
+              <div className={`p-5 rounded-2xl ${glassPanel} border-l-4 ${labaBersih >= 0 ? 'border-blue-500 bg-blue-900/10' : 'border-yellow-500'}`}><p className="text-xs font-bold uppercase tracking-wider opacity-70">Laba Bersih Toko</p><p className={`text-2xl font-black mt-1 ${labaBersih >= 0 ? 'text-blue-400' : 'text-yellow-400'}`}>Rp {labaBersih.toLocaleString("id-ID")}</p></div>
             </div>
             <div className="flex-1 overflow-y-auto pb-4 pr-2 scroll-smooth">
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-4">

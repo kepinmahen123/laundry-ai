@@ -25,8 +25,8 @@ export default function Dashboard() {
   // STATE DATABASE
   const [pesanan, setPesanan] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]); 
-  const [pengeluaran, setPengeluaran] = useState<any[]>([]); // DATA PENGELUARAN BARU
-  const [auditLogs, setAuditLogs] = useState<any[]>([]); // DATA LOG AKTIVITAS BARU
+  const [pengeluaran, setPengeluaran] = useState<any[]>([]); 
+  const [auditLogs, setAuditLogs] = useState<any[]>([]); 
 
   const [session, setSession] = useState<any>(null); 
   const [loading, setLoading] = useState(true); 
@@ -55,6 +55,8 @@ export default function Dashboard() {
 
   // STATE PENGELUARAN BARU
   const [formPengeluaran, setFormPengeluaran] = useState({ kategori: "Listrik (Token/Pasca)", deskripsi: "", nominal: "" });
+  const [fotoStruk, setFotoStruk] = useState<File | null>(null);
+  const [previewStrukUrl, setPreviewStrukUrl] = useState<string | null>(null);
 
   // STATE FORM & POS
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -97,6 +99,13 @@ export default function Dashboard() {
     setPaymentPhoto(file);
     if (file) setPaymentPreviewUrl(URL.createObjectURL(file));
     else setPaymentPreviewUrl(null);
+  }
+
+  function handlePilihFotoStruk(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] || null;
+    setFotoStruk(file);
+    if (file) setPreviewStrukUrl(URL.createObjectURL(file));
+    else setPreviewStrukUrl(null);
   }
 
   // ==========================================
@@ -273,6 +282,12 @@ export default function Dashboard() {
   async function handleSimpanPengeluaran(e: React.FormEvent) {
     e.preventDefault();
     if (!formPengeluaran.nominal) return;
+    
+    if (!fotoStruk) {
+      alert("⚠️ Harap unggah foto struk/bon pengeluaran terlebih dahulu!"); 
+      return;
+    }
+
     try {
       const { error } = await supabase.from("expenses").insert([{
         kategori: formPengeluaran.kategori,
@@ -280,13 +295,29 @@ export default function Dashboard() {
         nominal: Number(formPengeluaran.nominal),
         created_at: new Date().toISOString()
       }]);
+      
       if (error) throw new Error(error.message);
       
+      const pesanCaption = `💸 *PENGELUARAN BARU*\n\n📌 *Kategori:* ${formPengeluaran.kategori}\n📝 *Ket:* ${formPengeluaran.deskripsi}\n💰 *Nominal:* Rp ${Number(formPengeluaran.nominal).toLocaleString('id-ID')}`;
+      
+      const fileData = new FormData();
+      fileData.append("chat_id", chatId); 
+      fileData.append("photo", fotoStruk); 
+      fileData.append("caption", pesanCaption); 
+      fileData.append("parse_mode", "Markdown");
+
+      await fetch(`https://api.telegram.org/bot${telegramToken}/sendPhoto`, { method: "POST", body: fileData });
+
       catatLog("Uang Keluar", `Kategori: ${formPengeluaran.kategori} | Rp ${Number(formPengeluaran.nominal).toLocaleString('id-ID')} | Ket: ${formPengeluaran.deskripsi}`);
-      alert("✅ Pengeluaran operasional berhasil dicatat!");
+      alert("✅ Pengeluaran operasional & struk berhasil dicatat!");
+      
       setFormPengeluaran({ kategori: "Listrik (Token/Pasca)", deskripsi: "", nominal: "" });
+      setFotoStruk(null);
+      setPreviewStrukUrl(null);
       ambilData();
-    } catch (err: any) { alert("Gagal menyimpan pengeluaran: " + err.message); }
+    } catch (err: any) { 
+      alert("Gagal menyimpan pengeluaran: " + err.message); 
+    }
   }
 
   // ==========================================
@@ -543,7 +574,21 @@ export default function Dashboard() {
                     <label className="text-xs font-bold opacity-70 block mb-1">Deskripsi / Keterangan</label>
                     <textarea required value={formPengeluaran.deskripsi} onChange={e => setFormPengeluaran({...formPengeluaran, deskripsi: e.target.value})} className={`w-full p-3 rounded-xl ${glassInput}`} rows={2} placeholder="Isi pertalite driver Budi..."></textarea>
                   </div>
-                  <button type="submit" className="w-full bg-gradient-to-r from-red-600 to-rose-600 hover:opacity-90 text-white font-bold py-3 rounded-xl shadow-lg border border-white/20">Simpan Pengeluaran</button>
+                  <div className="border border-white/20 bg-black/10 rounded-xl p-3">
+                    <label className="block text-xs font-bold mb-2 opacity-80">📸 Upload Struk / Bon (Wajib)</label>
+                    {previewStrukUrl ? (
+                      <div className="w-full h-32 bg-black/20 rounded-xl overflow-hidden border border-white/20 relative">
+                        <img src={previewStrukUrl} alt="Preview Struk" className="w-full h-full object-cover" />
+                        <input type="file" accept="image/*" capture="environment" onChange={handlePilihFotoStruk} className="absolute inset-0 opacity-0 cursor-pointer" />
+                      </div>
+                    ) : (
+                      <div className="w-full h-16 bg-white/5 rounded-xl border-2 border-dashed border-white/30 flex flex-col items-center justify-center text-white/70 hover:bg-white/10 relative cursor-pointer">
+                        <span className="font-bold text-xs">📷 Tap untuk Ambil Foto Bon</span>
+                        <input type="file" accept="image/*" capture="environment" required onChange={handlePilihFotoStruk} className="absolute inset-0 opacity-0 cursor-pointer" />
+                      </div>
+                    )}
+                  </div>
+                  <button type="submit" className="w-full bg-gradient-to-r from-red-600 to-rose-600 hover:opacity-90 text-white font-bold py-3 rounded-xl shadow-lg border border-white/20">Tambah Pengeluaran</button>
                 </form>
               </div>
               <div className={`md:col-span-2 p-6 rounded-3xl ${glassPanel}`}>
@@ -551,12 +596,17 @@ export default function Dashboard() {
                 <div className="overflow-x-auto max-h-[400px]">
                   <table className="w-full text-left text-sm">
                     <thead className={tableHeaderGlass}>
-                      <tr><th className="p-3">Tanggal</th><th className="p-3">Kategori</th><th className="p-3">Deskripsi</th><th className="p-3 text-right">Nominal</th></tr>
+                      <tr><th className="p-3">Tanggal & Waktu</th><th className="p-3">Kategori</th><th className="p-3">Deskripsi</th><th className="p-3 text-right">Nominal</th></tr>
                     </thead>
                     <tbody className={`divide-y ${isDarkMode ? 'divide-white/5' : 'divide-black/5'}`}>
                       {pengeluaranBulanIni.map(ex => (
                         <tr key={ex.id} className={rowHover}>
-                          <td className="p-3 opacity-70 text-xs whitespace-nowrap">{new Date(ex.created_at).toLocaleDateString('id-ID', {day: '2-digit', month: 'short'})}</td>
+                          <td className="p-3 opacity-70 text-[11px] whitespace-nowrap">
+                            {new Date(ex.created_at).toLocaleString('id-ID', {
+                              day: '2-digit', month: 'short', year: 'numeric',
+                              hour: '2-digit', minute: '2-digit'
+                            })} WIB
+                          </td>
                           <td className="p-3 font-bold text-red-400">{ex.kategori}</td>
                           <td className="p-3 text-xs">{ex.deskripsi}</td>
                           <td className="p-3 font-black text-right text-red-400 whitespace-nowrap">Rp {Number(ex.nominal).toLocaleString('id-ID')}</td>

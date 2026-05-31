@@ -30,18 +30,15 @@ export default function Dashboard() {
   const [activeMenu, setActiveMenu] = useState("Dashboard");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
   
-  // PERBAIKAN SISTEM TANGGAL LOKAL (WIB) BERDASARKAN CREATED_AT
+  // FIX: Default dibuat KOSONG agar seluruh data muncul saat pertama kali load
   const [sortBy, setSortBy] = useState<"terbaru" | "terdekat">("terbaru");
-  const [filterTanggal, setFilterTanggal] = useState<string>(() => {
-    const d = new Date();
-    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-  }); 
+  const [filterTanggal, setFilterTanggal] = useState<string>(""); 
 
   // STATE KALENDER PENDAPATAN
   const [calendarMonth, setCalendarMonth] = useState<number>(new Date().getMonth());
   const [calendarYear, setCalendarYear] = useState<number>(new Date().getFullYear());
 
-  // STATE INVENTARIS GUDANG (PENGURANGAN OTOMATIS)
+  // STATE INVENTARIS GUDANG
   const [inventory, setInventory] = useState({ deterjen: 4850, parfum: 1920, plastik: 94 });
 
   // STATE FORM & POS
@@ -49,7 +46,6 @@ export default function Dashboard() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false); 
   
-  // STATE BUKTI PEMBAYARAN FORM POS
   const [paymentPhoto, setPaymentPhoto] = useState<File | null>(null);
   const [paymentPreviewUrl, setPaymentPreviewUrl] = useState<string | null>(null);
   
@@ -81,10 +77,6 @@ export default function Dashboard() {
     setFormData(prev => ({ ...prev, total_harga: jumlah * harga }));
   }, [formData.berat_pesanan_kg, formData.harga_per_unit, formData.tipe_layanan, rincianItem]);
 
-  const updateRincian = (itemKey: string, delta: number) => {
-    setRincianItem(prev => ({ ...prev, [itemKey]: Math.max(0, prev[itemKey as keyof typeof defaultRincian] + delta) }));
-  };
-
   function handlePilihFotoPembayaran(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] || null;
     setPaymentPhoto(file);
@@ -96,32 +88,16 @@ export default function Dashboard() {
   // KANBAN GUARDRAILS + SMART AUTOMATION
   // ==========================================
   const KANBAN_COLUMNS = ["Antrean", "Sedang Dicuci", "Disetrika", "Packing", "Siap Kirim", "selesai"];
-  const [draggedOrderId, setDraggedOrderId] = useState<number | null>(null);
-
-  const handleDragStart = (e: React.DragEvent, id: number) => {
-    e.dataTransfer.setData("text/plain", id.toString());
-    setDraggedOrderId(id);
-  };
-
-  const handleDrop = async (e: React.DragEvent, newStatus: string) => {
-    e.preventDefault();
-    const idStr = e.dataTransfer.getData("text/plain");
-    if (!idStr) return;
-    const id = Number(idStr);
-    perbaruiStatusPesanan(id, newStatus);
-  };
 
   const perbaruiStatusPesanan = async (id: number, newStatus: string) => {
     const orderLama = pesanan.find(p => p.id === id);
     if (!orderLama) return;
 
-    // GUARDRAIL KEUANGAN: Cegah operasional jika belum LUNAS
     if ((newStatus === "Siap Kirim" || newStatus === "selesai") && orderLama.status_pembayaran !== "Lunas") {
        alert(`🛑 AKSES DIBLOKIR: Pesanan Pelanggan "${orderLama.customer_name}" berstatus [${orderLama.status_pembayaran}]. Selesaikan pelunasan kasir terlebih dahulu sebelum lanjut kirim baju!`);
        return;
     }
 
-    // SECURITY LOCK FOTO: Buka kamera jika bergeser ke selesai
     if (newStatus === "selesai") {
       bukaModalFoto(id, orderLama.customer_name);
       return; 
@@ -131,40 +107,24 @@ export default function Dashboard() {
     const { error } = await supabase.from("orders").update({ status_logistik: newStatus }).eq("id", id);
     if (error) { alert("Gagal memperbarui status!"); ambilData(); return; }
 
-    if (newStatus === "Siap Kirim" && orderLama.status_logistik !== "Siap Kirim") {
-      kirimNotifSiapKirim(orderLama);
-    }
+    if (newStatus === "Siap Kirim" && orderLama.status_logistik !== "Siap Kirim") kirimNotifSiapKirim(orderLama);
   };
 
-  // FITUR INSTANT ACTION: Lunasi langsung di tempat
   const lunasiPesananInstant = async (id: number) => {
     setPesanan(prev => prev.map(p => p.id === id ? { ...p, status_pembayaran: "Lunas" } : p));
-    if(detailPesanan && detailPesanan.id === id) {
-      setDetailPesanan((prev: any) => ({ ...prev, status_pembayaran: "Lunas" }));
-    }
+    if(detailPesanan && detailPesanan.id === id) setDetailPesanan((prev: any) => ({ ...prev, status_pembayaran: "Lunas" }));
+    
     const { error } = await supabase.from("orders").update({ status_pembayaran: "Lunas" }).eq("id", id);
     if (error) { alert("Gagal melunasi transaksi!"); ambilData(); }
     else { alert("🎉 Pembayaran dikonfirmasi LUNAS! Papan operasional terbuka kembali."); }
   };
 
   const kirimNotifSiapKirim = async (order: any) => {
-    let teksNotif = "";
-    if (order.metode_pengiriman === "Diantar Driver Internal") {
-      teksNotif = `✨ *HALO ${order.customer_name}* ✨\n\nKabar gembira! Cucian kamu (Nota #${order.id}) sudah selesai diproses hingga bersih, wangi, dan rapi! 🧺✨\n\n🛵 Saat ini cucian kamu berada di status *Siap Kirim*. Driver kami akan segera meluncur untuk mengantarkan paket ini ke alamatmu. Mohon ditunggu ya! 🙏`;
-    } else if (order.metode_pengiriman === "Pickup di Toko Sendiri") {
-      teksNotif = `✨ *HALO ${order.customer_name}* ✨\n\nKabar gembira! Cucian kamu (Nota #${order.id}) sudah selesai diproses dan *SIAP DIAMBIL* di toko kami! 🏪✨\n\nSilakan mampir kapan saja pada jam operasional kami untuk mengambil cuciannya. Terima kasih telah mempercayakan LaundroAI! 🙏`;
-    } else if (order.metode_pengiriman === "GoSend / GrabExpress") {
-      teksNotif = `✨ *HALO ${order.customer_name}* ✨\n\nKabar gembira! Cucian kamu (Nota #${order.id}) sudah selesai diproses dan dipacking rapi! 📦✨\n\nSaat ini pesanan berstatus *Siap Kirim* via GoSend / GrabExpress. Kami sedang menyiapkan driver untuk mengambil paketnya. Kakak bisa menunggu di lokasi. Terima kasih! 🙏`;
-    } else {
-      teksNotif = `✨ *HALO ${order.customer_name}* ✨\n\nCucian kamu (Nota #${order.id}) sudah selesai dan berstatus *Siap Kirim*! Terima kasih! 🙏`;
-    }
-
-    try {
-      await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: chatId, text: teksNotif, parse_mode: "Markdown" })
-      });
-    } catch (err) { console.error("Gagal mengirim notif siap kirim:", err); }
+    let teksNotif = `✨ *HALO ${order.customer_name}* ✨\n\nCucian kamu (Nota #${order.id}) sudah berstatus *Siap Kirim/Selesai*! Terima kasih! 🙏`;
+    fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text: teksNotif, parse_mode: "Markdown" })
+    }).catch(console.error);
   };
 
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
@@ -200,8 +160,7 @@ export default function Dashboard() {
   }
 
   async function handleLogout() {
-    await supabase.auth.signOut();
-    router.push("/login");
+    await supabase.auth.signOut(); router.push("/login");
   }
 
   function bukaModalFoto(id: number, nama: string) {
@@ -211,17 +170,12 @@ export default function Dashboard() {
 
   function handlePilihFotoPengiriman(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] || null;
-    setDeliveryPhoto(file);
-    if (file) setLivePreviewUrl(URL.createObjectURL(file));
-    else setLivePreviewUrl(null);
+    setDeliveryPhoto(file); setLivePreviewUrl(file ? URL.createObjectURL(file) : null);
   }
 
   function lihatFotoBukti(idPesanan: number) {
-    if (buktiFotoUrls[idPesanan]) {
-      setPreviewTargetUrl(buktiFotoUrls[idPesanan]); setIsPreviewOpen(true);
-    } else {
-      alert("📱 Foto bukti pengiriman lama tidak disimpan di server untuk menghemat memori. Silakan cek langsung di Telegram.");
-    }
+    if (buktiFotoUrls[idPesanan]) { setPreviewTargetUrl(buktiFotoUrls[idPesanan]); setIsPreviewOpen(true); } 
+    else { alert("📱 Foto bukti pengiriman lama tidak disimpan di server untuk menghemat memori. Silakan cek langsung di Telegram."); }
   }
 
   async function kirimBuktiSelesai(e: React.FormEvent) {
@@ -234,39 +188,28 @@ export default function Dashboard() {
       if (error) throw new Error(error.message);
       
       setPesanan(prev => prev.map(p => p.id === selectedOrder.id ? { ...p, status_logistik: "selesai" } : p)); 
-
-      const sekarang = new Date();
-      const opsiOtomatis: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' };
-      const waktuSelesai = sekarang.toLocaleDateString('id-ID', opsiOtomatis) + ' WIB';
-
-      const pesanCaption = `✅ *PESANAN SELESAI*\n\nHalo kak ${selectedOrder.customer_name}! Cucian kamu sudah selesai diproses dan tiba di lokasi (atau telah di-pickup).\n🕒 *Waktu Selesai:* ${waktuSelesai}\n📦 Terima kasih sudah mempercayakan kami sebagai tempat laundry Anda.`;
+      const waktuSelesai = new Date().toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' WIB';
+      const pesanCaption = `✅ *PESANAN SELESAI*\n\nHalo kak ${selectedOrder.customer_name}!\n🕒 *Waktu Selesai:* ${waktuSelesai}\n📦 Terima kasih!`;
       
       const fileData = new FormData();
       fileData.append("chat_id", chatId); fileData.append("photo", deliveryPhoto); fileData.append("caption", pesanCaption); fileData.append("parse_mode", "Markdown");
 
       await fetch(`https://api.telegram.org/bot${telegramToken}/sendPhoto`, { method: "POST", body: fileData });
-      
       if (livePreviewUrl) setBuktiFotoUrls(prev => ({ ...prev, [selectedOrder.id]: livePreviewUrl }));
-      alert(`🎉 Pengiriman Berhasil!\nPesanan telah dipindah ke kolom Selesai.`);
-    } catch (err) { 
-      alert("Gagal memproses penyelesaian pesanan."); 
-    } finally {
-      setIsUploadingPhoto(false); setIsPhotoModalOpen(false); setSelectedOrder(null); setDeliveryPhoto(null); setLivePreviewUrl(null);
-    }
+      alert(`🎉 Pengiriman Berhasil!`);
+    } catch (err) { alert("Gagal memproses penyelesaian."); } 
+    finally { setIsUploadingPhoto(false); setIsPhotoModalOpen(false); setSelectedOrder(null); setDeliveryPhoto(null); setLivePreviewUrl(null); }
   }
 
   // ==========================================
-  // SIMPAN PESANAN BARU + POTONG STOK OTOMATIS
+  // SIMPAN PESANAN BARU + FORCE INJECTION TIMESTAMP
   // ==========================================
   async function handleTambahPesanan(e: React.FormEvent) {
     e.preventDefault();
     
-    // GUARDRAIL BARU: Hanya wajib foto jika BUKAN status "Belum Bayar"
     if (formData.status_pembayaran !== "Belum Bayar" && !paymentPhoto) {
-      alert("⚠️ Harap unggah foto bukti transaksi pembayaran (Transfer/QRIS/Cash) terlebih dahulu!");
-      return;
+      alert("⚠️ Harap unggah foto bukti transaksi pembayaran (Transfer/QRIS/Cash) terlebih dahulu!"); return;
     }
-
     setIsSubmitting(true);
     
     try {
@@ -286,108 +229,53 @@ export default function Dashboard() {
           harga_per_unit: Number(formData.harga_per_unit),
           total_harga: formData.total_harga,
           rincian_item: rincianItem,
-          status_logistik: "Antrean" 
+          status_logistik: "Antrean",
+          created_at: new Date().toISOString() // FIX: INJEKSI WAKTU SECARA PAKSA!
         }
       ]).select("*");
       
       if (error) throw new Error(error.message);
 
-      // POTONG INVENTARIS SECARA PROPORSIOAL
       const berat = Number(formData.berat_pesanan_kg) || 1;
-      const dDeduct = Math.round(berat * 50); // 50ml deterjen per kg
-      const pDeduct = Math.round(berat * 20); // 20ml parfum per kg
-
       setInventory(prev => {
-        const nDet = Math.max(0, prev.deterjen - dDeduct);
-        const nPar = Math.max(0, prev.parfum - pDeduct);
+        const nDet = Math.max(0, prev.deterjen - Math.round(berat * 50));
+        const nPar = Math.max(0, prev.parfum - Math.round(berat * 20));
         const nPlas = Math.max(0, prev.plastik - 1);
-
-        // TRIGGER ALARM TELEGRAM JIKA STOK GUDANG KRITIS
         if (nDet < 1000 || nPar < 500 || nPlas < 10) {
-          const alarmTeks = `⚠️ *DARURAT INVENTARIS LAUNDROAI* ⚠️\n\n` +
-            `• Bahan Baku Deterjen: ${nDet} ml ${nDet < 1000 ? '🚨' : '✅'}\n` +
-            `• Bahan Premium Parfum: ${nPar} ml ${nPar < 500 ? '🚨' : '✅'}\n` +
-            `• Kantong Plastik Packing: ${nPlas} Pcs ${nPlas < 10 ? '🚨' : '✅'}\n\n` +
-            `Sistem mendeteksi stok menipis. Harap lakukan restock agar lini produksi mesin cuci tidak berhenti!`;
-          
           fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
             method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ chat_id: chatId, text: alarmTeks, parse_mode: "Markdown" })
-          }).catch(err => console.error(err));
+            body: JSON.stringify({ chat_id: chatId, text: `⚠️ *DARURAT INVENTARIS* Stok menipis. Segera restock!`, parse_mode: "Markdown" })
+          }).catch(console.error);
         }
-
         return { deterjen: nDet, parfum: nPar, plastik: nPlas };
       });
 
-      const listRincian = [];
-      if (rincianItem.baju > 0) listRincian.push(`- 👕 Baju: ${rincianItem.baju}`);
-      if (rincianItem.celana > 0) listRincian.push(`- 👖 Celana: ${rincianItem.celana}`);
-      if (rincianItem.kemeja > 0) listRincian.push(`- 👔 Kemeja: ${rincianItem.kemeja}`);
-      if (rincianItem.jaket > 0) listRincian.push(`- 🧥 Jaket: ${rincianItem.jaket}`);
-      if (rincianItem.celana_dalam > 0) listRincian.push(`- 🩲 Cln. Dalam: ${rincianItem.celana_dalam}`);
-      if (rincianItem.kaos_kaki > 0) listRincian.push(`- 🧦 Kaos Kaki: ${rincianItem.kaos_kaki}`);
-      if (rincianItem.dasi > 0) listRincian.push(`- 👔 Dasi: ${rincianItem.dasi}`);
-      
-      const teksRincian = listRincian.length > 0 ? `\n\n📝 *Rincian Pakaian:*\n${listRincian.join("\n")}` : "";
       const orderId = newOrderData && newOrderData[0] ? newOrderData[0].id : "BARU";
+      const notaDigital = `🧾 *NOTA ${formData.status_pembayaran !== 'Belum Bayar' ? '& BUKTI PEMBAYARAN ' : 'PESANAN '}(#${orderId})* 🧾\n👤 *Pelanggan:* ${formData.customer_name}\n💳 *Keuangan:* ${formData.status_pembayaran.toUpperCase()}\n💰 *TOTAL TAGIHAN: Rp ${formData.total_harga.toLocaleString('id-ID')}*`;
 
-      const notaDigital = `🧾 *NOTA ${formData.status_pembayaran !== 'Belum Bayar' ? '& BUKTI PEMBAYARAN ' : 'PESANAN '}(#${orderId})* 🧾
------------------------------------------
-👤 *Pelanggan:* ${formData.customer_name}
-🏷️ *Layanan:* ${formData.tipe_layanan.toUpperCase()}
-📦 *Paket:* ${formData.paket_layanan}
-🚚 *Pengiriman:* ${formData.metode_pengiriman}
-💳 *Keuangan:* ${formData.status_pembayaran.toUpperCase()} ${formData.status_pembayaran === 'DP' ? `(Rp ${Number(formData.jumlah_dp).toLocaleString('id-ID')})` : ''}
------------------------------------------
-⚖️ *Berat / Qty:* ${formData.berat_pesanan_kg} ${formData.tipe_layanan === 'satuan' ? 'Pcs' : 'KG'}
-💵 *Harga per ${formData.tipe_layanan === 'satuan' ? 'Pcs' : 'KG'}:* Rp ${Number(formData.harga_per_unit).toLocaleString('id-ID')}${teksRincian}
------------------------------------------
-💰 *TOTAL TAGIHAN: Rp ${formData.total_harga.toLocaleString('id-ID')}*
------------------------------------------
-🙏 _Terima kasih sudah mempercayakan kami sebagai tempat laundry anda...._`;
-
-      // LOGIKA PENGIRIMAN TELEGRAM DINAMIS
       if (formData.status_pembayaran !== "Belum Bayar" && paymentPhoto) {
-        // Kirim nota beserta gambar bukti bayar
         const telegramFormData = new FormData();
-        telegramFormData.append("chat_id", chatId); 
-        telegramFormData.append("photo", paymentPhoto); 
-        telegramFormData.append("caption", notaDigital); 
-        telegramFormData.append("parse_mode", "Markdown");
+        telegramFormData.append("chat_id", chatId); telegramFormData.append("photo", paymentPhoto); 
+        telegramFormData.append("caption", notaDigital); telegramFormData.append("parse_mode", "Markdown");
         await fetch(`https://api.telegram.org/bot${telegramToken}/sendPhoto`, { method: "POST", body: telegramFormData });
       } else {
-        // Jika Belum Bayar, kirim teks nota saja
         await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+          method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ chat_id: chatId, text: notaDigital, parse_mode: "Markdown" })
         });
       }
 
       setIsModalOpen(false); 
-      setFormData({ 
-        customer_name: "", alamat_detail: "", jarak_ke_toko_km: "", berat_pesanan_kg: "", 
-        latitude: "", longitude: "", tipe_layanan: "kiloan", 
-        paket_layanan: "Reguler (Cuci Kering Setrika Lipat)", metode_pengiriman: "Diantar Driver Internal", 
-        status_pembayaran: "Lunas", jumlah_dp: "0", harga_per_unit: "7000", total_harga: 0 
-      }); 
-      setRincianItem(defaultRincian); 
-      setPaymentPhoto(null); setPaymentPreviewUrl(null);
-      ambilData(); 
+      setFormData({ customer_name: "", alamat_detail: "", jarak_ke_toko_km: "", berat_pesanan_kg: "", latitude: "", longitude: "", tipe_layanan: "kiloan", paket_layanan: "Reguler (Cuci Kering Setrika Lipat)", metode_pengiriman: "Diantar Driver Internal", status_pembayaran: "Lunas", jumlah_dp: "0", harga_per_unit: "7000", total_harga: 0 }); 
+      setRincianItem(defaultRincian); setPaymentPhoto(null); setPaymentPreviewUrl(null); ambilData(); 
 
-    } catch (err: any) {
-      alert("Terjadi kesalahan: " + err.message);
-    } finally {
-      setIsSubmitting(false);
-    }
+    } catch (err: any) { alert("Terjadi kesalahan: " + err.message); } 
+    finally { setIsSubmitting(false); }
   }
 
   async function handleTambahCustomer(e: React.FormEvent) {
-    e.preventDefault();
-    setIsSubmittingCustomer(true);
-    const { error } = await supabase.from("customers").insert([
-      { name: customerFormData.name, alamat_detail: customerFormData.alamat_detail, jarak_ke_toko_km: Number(customerFormData.jarak_ke_toko_km) }
-    ]);
+    e.preventDefault(); setIsSubmittingCustomer(true);
+    const { error } = await supabase.from("customers").insert([{ name: customerFormData.name, alamat_detail: customerFormData.alamat_detail, jarak_ke_toko_km: Number(customerFormData.jarak_ke_toko_km) }]);
     setIsSubmittingCustomer(false);
     if (error) alert("Gagal. Error: " + error.message);
     else { setIsCustomerModalOpen(false); setCustomerFormData({ name: "", alamat_detail: "", jarak_ke_toko_km: "" }); ambilData(); }
@@ -398,7 +286,7 @@ export default function Dashboard() {
     try {
       let barisCsv = "ID Pesanan,Tanggal,Nama Pelanggan,Paket,Pengiriman,Berat/Qty,Total Harga,Status Keuangan,Status Logistik\n";
       dataTersaring.forEach((item) => {
-        const d = item.created_at ? new Date(item.created_at) : new Date();
+        const d = new Date(item.created_at || item.createdAt || Date.now());
         const tgl = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
         barisCsv += `${item.id || "-"},${tgl},${String(item.customer_name || "-").replace(/,/g, " ")},${item.paket_layanan || "-"},${item.metode_pengiriman || "-"},${item.berat_pesanan_kg || "0"},${item.total_harga || "0"},${item.status_pembayaran || "Lunas"},${item.status_logistik || "-"}\n`;
       });
@@ -411,16 +299,20 @@ export default function Dashboard() {
     } catch (err) { alert("Kesalahan sistem."); } finally { setIsExporting(false); }
   }
 
-  // LOGIKA RENDER DATA KALENDER PENDAPATAN
+  // ==========================================
+  // FIX LOGIKA KALENDER: Membaca Tanggal dengan Aman (Safe Parsing)
+  // ==========================================
   const pesananBulanIni = pesanan.filter(p => {
-    if (!p.created_at) return false;
-    const d = new Date(p.created_at);
+    const tglRaw = p.created_at || p.createdAt;
+    if (!tglRaw) return false;
+    const d = new Date(tglRaw);
     return d.getMonth() === calendarMonth && d.getFullYear() === calendarYear;
   });
 
   const rekapHarian: { [key: number]: { qty: number, total: number } } = {};
   pesananBulanIni.forEach(p => {
-     const d = new Date(p.created_at);
+     const tglRaw = p.created_at || p.createdAt;
+     const d = new Date(tglRaw);
      const tgl = d.getDate();
      if(!rekapHarian[tgl]) rekapHarian[tgl] = { qty: 0, total: 0 };
      rekapHarian[tgl].qty += 1;
@@ -430,11 +322,7 @@ export default function Dashboard() {
   const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
   const calendarCards = [];
   for(let i = 1; i <= daysInMonth; i++) {
-     calendarCards.push({
-       tanggal: i,
-       qty: rekapHarian[i]?.qty || 0,
-       total: rekapHarian[i]?.total || 0
-     });
+     calendarCards.push({ tanggal: i, qty: rekapHarian[i]?.qty || 0, total: rekapHarian[i]?.total || 0 });
   }
 
   const totalBulanQty = calendarCards.reduce((acc, curr) => acc + curr.qty, 0);
@@ -445,16 +333,24 @@ export default function Dashboard() {
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4 mx-auto"></div></div>;
   if (!session) return null;
 
-  // FILTERING LOGIC COCOK BERDASARKAN TANGGAL PEMBUATAN TRANSKASI (CREATED_AT) LOKAL
+  // ==========================================
+  // FIX FILTERING DASHBOARD & SORTING
+  // ==========================================
   const dataTersaring = [...pesanan]
     .filter((item) => filterStatus === "semua" ? true : item.status_logistik === filterStatus)
     .filter((item) => {
-      if (!filterTanggal) return true; 
-      if (!item.created_at) return false;
-      const d = new Date(item.created_at);
+      if (!filterTanggal) return true; // TAMPILKAN SEMUA JIKA FILTER KOSONG
+      const tglRaw = item.created_at || item.createdAt;
+      if (!tglRaw) return false; 
+      const d = new Date(tglRaw);
       const itemLocalYYYYMMDD = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
       return itemLocalYYYYMMDD === filterTanggal;
-    }).sort((a, b) => (sortBy === "terbaru" ? 0 : 0));
+    })
+    .sort((a, b) => {
+      const timeA = new Date(a.created_at || a.createdAt || 0).getTime();
+      const timeB = new Date(b.created_at || b.createdAt || 0).getTime();
+      return sortBy === "terbaru" ? timeB - timeA : timeA - timeB; // FIX SORTING TANGGAL
+    });
 
   const dynamicBg = isDarkMode ? "bg-gradient-to-br from-indigo-950 via-gray-900 to-purple-950 text-white" : "bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-100 text-gray-900";
   const glassPanel = isDarkMode ? "bg-white/5 backdrop-blur-xl border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.3)]" : "bg-white/40 backdrop-blur-xl border border-white/50 shadow-[0_8px_32px_0_rgba(31,38,135,0.1)]";
@@ -465,9 +361,6 @@ export default function Dashboard() {
 
   return (
     <div className={`flex h-screen overflow-hidden font-sans transition-colors duration-500 relative ${dynamicBg}`}>
-      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-blue-500/20 blur-[120px] pointer-events-none"></div>
-      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-purple-500/20 blur-[120px] pointer-events-none"></div>
-
       <button onClick={() => setIsSidebarOpen(true)} className={`md:hidden fixed top-4 left-4 z-40 p-3 rounded-xl ${glassPanel} active:scale-95`}><span className="text-xl">☰</span></button>
       {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40" />}
 
@@ -498,29 +391,14 @@ export default function Dashboard() {
 
       <main className="flex-1 overflow-y-auto p-6 lg:p-10 pt-20 md:pt-10 scroll-smooth z-10 w-full max-w-full">
         
-        {/* MODUL INVENTARIS GUDANG BARU */}
+        {/* MODUL INVENTARIS GUDANG */}
         {activeMenu === "Inventory" ? (
           <div className="max-w-7xl mx-auto flex flex-col h-full">
-            <div className="mb-6">
-              <h1 className="text-3xl font-extrabold tracking-tight">Stok Gudang 📦</h1>
-              <p className={`text-sm mt-1 ${textMuted}`}>Pantau pemotongan bahan baku deterjen & parfum secara real-time.</p>
-            </div>
+            <div className="mb-6"><h1 className="text-3xl font-extrabold tracking-tight">Stok Gudang 📦</h1></div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className={`p-6 rounded-2xl ${glassPanel} border-t-4 border-t-blue-500`}>
-                <div className="flex justify-between items-center mb-4"><span className="text-sm font-bold opacity-70">🧼 Deterjen Utama</span><span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded font-mono">{inventory.deterjen} ml</span></div>
-                <div className="w-full bg-black/30 rounded-full h-3 mb-2"><div className={`h-3 rounded-full transition-all ${inventory.deterjen < 1000 ? 'bg-red-500 animate-pulse' : 'bg-blue-500'}`} style={{width: `${Math.min(100, (inventory.deterjen / 5000) * 100)}%`}}></div></div>
-                <button onClick={() => setInventory({...inventory, deterjen: 5000})} className="w-full text-center text-xs py-2 bg-white/5 hover:bg-white/10 rounded-xl mt-2 border border-white/5 font-bold transition-all">➕ Isi Ulang Jerigen (5L)</button>
-              </div>
-              <div className={`p-6 rounded-2xl ${glassPanel} border-t-4 border-t-purple-500`}>
-                <div className="flex justify-between items-center mb-4"><span className="text-sm font-bold opacity-70">🌸 Parfum Premium</span><span className="text-xs bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded font-mono">{inventory.parfum} ml</span></div>
-                <div className="w-full bg-black/30 rounded-full h-3 mb-2"><div className={`h-3 rounded-full transition-all ${inventory.parfum < 500 ? 'bg-red-500 animate-pulse' : 'bg-purple-500'}`} style={{width: `${Math.min(100, (inventory.parfum / 2000) * 100)}%`}}></div></div>
-                <button onClick={() => setInventory({...inventory, parfum: 2000})} className="w-full text-center text-xs py-2 bg-white/5 hover:bg-white/10 rounded-xl mt-2 border border-white/5 font-bold transition-all">➕ Isi Ulang Parfum (2L)</button>
-              </div>
-              <div className={`p-6 rounded-2xl ${glassPanel} border-t-4 border-t-emerald-500`}>
-                <div className="flex justify-between items-center mb-4"><span className="text-sm font-bold opacity-70">🛍️ Plastik Packing</span><span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-mono">{inventory.plastik} Pcs</span></div>
-                <div className="w-full bg-black/30 rounded-full h-3 mb-2"><div className={`h-3 rounded-full transition-all ${inventory.plastik < 10 ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}`} style={{width: `${Math.min(100, (inventory.plastik / 100) * 100)}%`}}></div></div>
-                <button onClick={() => setInventory({...inventory, plastik: 100})} className="w-full text-center text-xs py-2 bg-white/5 hover:bg-white/10 rounded-xl mt-2 border border-white/5 font-bold transition-all">➕ Restock Plastik (100 Pcs)</button>
-              </div>
+              <div className={`p-6 rounded-2xl ${glassPanel} border-t-4 border-t-blue-500`}><p className="text-sm font-bold opacity-70">🧼 Deterjen Utama</p><p className="text-2xl font-mono text-blue-400">{inventory.deterjen} ml</p></div>
+              <div className={`p-6 rounded-2xl ${glassPanel} border-t-4 border-t-purple-500`}><p className="text-sm font-bold opacity-70">🌸 Parfum Premium</p><p className="text-2xl font-mono text-purple-400">{inventory.parfum} ml</p></div>
+              <div className={`p-6 rounded-2xl ${glassPanel} border-t-4 border-t-emerald-500`}><p className="text-sm font-bold opacity-70">🛍️ Plastik Packing</p><p className="text-2xl font-mono text-emerald-400">{inventory.plastik} Pcs</p></div>
             </div>
           </div>
         ) : activeMenu === "Calendar" ? (
@@ -623,7 +501,7 @@ export default function Dashboard() {
 
             {/* AREA UTAMA KANBAN BOARD */}
             {dataTersaring.length === 0 ? (
-              <div className={`rounded-3xl p-16 text-center ${glassPanel} my-auto`}><div className="text-5xl mb-4 opacity-50">📭</div><h3 className="text-xl font-bold mb-2">Tidak ada aktivitas</h3><p className={textMuted}>Belum ada data pesanan pada tanggal ini.</p></div>
+              <div className={`rounded-3xl p-16 text-center ${glassPanel} my-auto`}><div className="text-5xl mb-4 opacity-50">📭</div><h3 className="text-xl font-bold mb-2">Tidak ada aktivitas</h3><p className={textMuted}>Belum ada data pesanan yang sesuai dengan filter.</p></div>
             ) : viewMode === "table" ? (
               <div className={`rounded-3xl overflow-x-auto ${glassPanel}`}>
                 <table className="min-w-full text-left">
@@ -631,40 +509,43 @@ export default function Dashboard() {
                     <tr><th className="p-5 font-semibold text-sm tracking-wide">ID & Pelanggan</th><th className="p-5 font-semibold text-sm tracking-wide">Layanan</th><th className="p-5 font-semibold text-sm tracking-wide">Keuangan</th><th className="p-5 font-semibold text-sm tracking-wide text-center">Status Papan</th><th className="p-5 font-semibold text-sm tracking-wide text-center">Tindakan</th></tr>
                   </thead>
                   <tbody className={`divide-y ${isDarkMode ? 'divide-white/5' : 'divide-black/5'}`}>
-                    {dataTersaring.map((item) => (
-                      <tr key={item.id} onClick={() => setDetailPesanan(item)} className={`transition-colors cursor-pointer ${rowHover}`}>
-                        <td className="p-5 min-w-[150px]">
-                          <div className="text-xs font-bold mb-1 opacity-60">#{item.id}</div><div className="font-bold">{item.customer_name}</div>
-                          <div className={`text-xs mt-1 font-medium ${textMuted}`}>{item.created_at ? new Date(item.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : "-"} WIB</div>
-                        </td>
-                        <td className="p-5 min-w-[200px]">
-                          <div className="text-sm font-bold text-indigo-400">{item.tipe_layanan?.toUpperCase() || "KILOAN"}</div>
-                          <div className="text-xs opacity-80 mt-1">{item.paket_layanan || "Reguler"}</div>
-                        </td>
-                        <td className="p-5 min-w-[150px]">
-                          <span className={`px-2 py-1 rounded text-xs font-bold ${item.status_pembayaran === 'Lunas' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{item.status_pembayaran}</span>
-                        </td>
-                        <td className="p-5 text-center align-middle min-w-[150px]">
-                          <span className={`px-3 py-1.5 font-bold rounded-lg text-[11px] tracking-wider uppercase block w-max mx-auto ${item.status_logistik === 'selesai' ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'}`}>{item.status_logistik}</span>
-                        </td>
-                        <td className="p-5 text-center align-middle min-w-[150px]">
-                          {item.status_logistik === 'Siap Kirim' ? (
-                            <button onClick={(e) => { e.stopPropagation(); bukaModalFoto(item.id, item.customer_name); }} className="bg-gradient-to-r from-emerald-600 to-green-600 hover:opacity-80 text-white px-4 py-2 rounded-xl text-xs md:text-sm font-bold shadow-lg transition-all active:scale-95 border border-white/20">Selesaikan 🚀</button>
-                          ) : item.status_logistik === 'selesai' ? (
-                            <button onClick={(e) => { e.stopPropagation(); lihatFotoBukti(item.id); }} className={`text-xs font-bold px-3 py-2 rounded-lg transition-all ${glassPanel} hover:bg-white/10`}>👁️ Cek Foto</button>
-                          ) : (
-                            <div className="text-xs opacity-50">Berjalan...</div>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                    {dataTersaring.map((item) => {
+                      const tglValue = item.created_at || item.createdAt;
+                      return (
+                        <tr key={item.id} onClick={() => setDetailPesanan(item)} className={`transition-colors cursor-pointer ${rowHover}`}>
+                          <td className="p-5 min-w-[150px]">
+                            <div className="text-xs font-bold mb-1 opacity-60">#{item.id}</div><div className="font-bold">{item.customer_name}</div>
+                            <div className={`text-xs mt-1 font-medium ${textMuted}`}>{tglValue ? new Date(tglValue).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : "-"} WIB</div>
+                          </td>
+                          <td className="p-5 min-w-[200px]">
+                            <div className="text-sm font-bold text-indigo-400">{item.tipe_layanan?.toUpperCase() || "KILOAN"}</div>
+                            <div className="text-xs opacity-80 mt-1">{item.paket_layanan || "Reguler"}</div>
+                          </td>
+                          <td className="p-5 min-w-[150px]">
+                            <span className={`px-2 py-1 rounded text-xs font-bold ${item.status_pembayaran === 'Lunas' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{item.status_pembayaran}</span>
+                          </td>
+                          <td className="p-5 text-center align-middle min-w-[150px]">
+                            <span className={`px-3 py-1.5 font-bold rounded-lg text-[11px] tracking-wider uppercase block w-max mx-auto ${item.status_logistik === 'selesai' ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'}`}>{item.status_logistik}</span>
+                          </td>
+                          <td className="p-5 text-center align-middle min-w-[150px]">
+                            {item.status_logistik === 'Siap Kirim' ? (
+                              <button onClick={(e) => { e.stopPropagation(); bukaModalFoto(item.id, item.customer_name); }} className="bg-gradient-to-r from-emerald-600 to-green-600 hover:opacity-80 text-white px-4 py-2 rounded-xl text-xs md:text-sm font-bold shadow-lg transition-all active:scale-95 border border-white/20">Selesaikan 🚀</button>
+                            ) : item.status_logistik === 'selesai' ? (
+                              <button onClick={(e) => { e.stopPropagation(); lihatFotoBukti(item.id); }} className={`text-xs font-bold px-3 py-2 rounded-lg transition-all ${glassPanel} hover:bg-white/10`}>👁️ Cek Foto</button>
+                            ) : (
+                              <div className="text-xs opacity-50">Berjalan...</div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             ) : (
               <div className="flex gap-4 overflow-x-auto pb-4 flex-1 items-start snap-x snap-mandatory">
                 {KANBAN_COLUMNS.map(col => (
-                  <div key={col} onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, col)} className={`min-w-[280px] md:min-w-[320px] max-h-full flex flex-col bg-black/10 dark:bg-black/40 rounded-2xl p-3 border border-white/5 shadow-inner snap-center transition-colors`}>
+                  <div key={col} className={`min-w-[280px] md:min-w-[320px] max-h-full flex flex-col bg-black/10 dark:bg-black/40 rounded-2xl p-3 border border-white/5 shadow-inner snap-center transition-colors`}>
                     <div className="flex justify-between items-center mb-3 px-2 border-b border-white/10 pb-2 shrink-0">
                       <h3 className="font-extrabold text-sm tracking-wide text-indigo-200 uppercase">{col}</h3>
                       <span className="bg-white/10 text-xs px-2 py-0.5 rounded-full font-bold">
@@ -678,7 +559,7 @@ export default function Dashboard() {
                         const nextStatus = currentIndex !== -1 && currentIndex < KANBAN_COLUMNS.length - 1 ? KANBAN_COLUMNS[currentIndex + 1] : null;
 
                         return (
-                          <div key={item.id} draggable onDragStart={(e) => handleDragStart(e, item.id)} onClick={() => setDetailPesanan(item)} className={`p-4 rounded-xl relative ${glassPanel} cursor-pointer hover:border-indigo-400/50 transition-all shadow-md group`}>
+                          <div key={item.id} onClick={() => setDetailPesanan(item)} className={`p-4 rounded-xl relative ${glassPanel} cursor-pointer hover:border-indigo-400/50 transition-all shadow-md group`}>
                             <div className="flex justify-between items-start mb-2">
                               <div>
                                 <div className="text-[10px] font-bold mb-1 opacity-60">#{item.id}</div>
@@ -831,12 +712,13 @@ export default function Dashboard() {
                 )}
               </div>
 
-              {/* AREA PREVIEW QRIS DINAMIS OTOMATIS */}
+              {/* QRIS STATIS UNIVERSAL */}
               {formData.total_harga > 0 && formData.status_pembayaran === "Lunas" && (
-                <div className="p-4 bg-white rounded-2xl border border-indigo-500/20 shadow-inner flex flex-col items-center justify-center animate-fadeIn">
-                  <p className="text-xs text-slate-800 font-extrabold mb-2 text-center flex items-center gap-1">📲 SCAN QRIS LAUNDROAI (Rp {formData.total_harga.toLocaleString("id-ID")})</p>
-                  <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=qris://laundroai/pay?amount=${formData.total_harga}`} alt="QRIS Dinamis" className="w-32 h-32 object-contain bg-white p-1 rounded-lg border shadow-sm" />
-                  <p className="text-[10px] text-slate-500 mt-1 text-center font-medium">Nilai barcode terenkripsi otomatis mengikuti kasir</p>
+                <div className="p-4 bg-white rounded-2xl shadow flex flex-col items-center">
+                  <p className="text-xs text-slate-800 font-extrabold mb-2">📲 SCAN QRIS LAUNDROAI</p>
+                  <img src="/qris.jpg" alt="QRIS Universal" className="w-32 h-32 object-contain border rounded-lg" />
+                  <p className="text-lg font-black text-emerald-600 mt-2">Rp {formData.total_harga.toLocaleString("id-ID")}</p>
+                  <p className="text-[10px] text-slate-500 font-medium mt-1 text-center">Minta pelanggan memasukkan nominal secara manual.</p>
                 </div>
               )}
 

@@ -50,8 +50,23 @@ export default function Dashboard() {
   const [calendarMonth, setCalendarMonth] = useState<number>(new Date().getMonth());
   const [calendarYear, setCalendarYear] = useState<number>(new Date().getFullYear());
 
-  // STATE INVENTARIS GUDANG
+  // ==========================================
+  // FIX: STATE INVENTARIS GUDANG + LOCALSTORAGE
+  // ==========================================
   const [inventory, setInventory] = useState({ deterjen: 4850, parfum: 1920, plastik: 94 });
+
+  useEffect(() => {
+    // Ambil data stok terakhir jika halaman direfresh
+    const savedInv = localStorage.getItem("laundro_inventory");
+    if (savedInv) {
+      try { setInventory(JSON.parse(savedInv)); } catch (e) {}
+    }
+  }, []);
+
+  useEffect(() => {
+    // Simpan otomatis ke browser setiap ada perubahan stok
+    localStorage.setItem("laundro_inventory", JSON.stringify(inventory));
+  }, [inventory]);
 
   // STATE PENGELUARAN BARU
   const [formPengeluaran, setFormPengeluaran] = useState({ kategori: "Listrik (Token/Pasca)", deskripsi: "", nominal: "" });
@@ -277,7 +292,7 @@ export default function Dashboard() {
   }
 
   // ==========================================
-  // FITUR SIMPAN PENGELUARAN BARU + STOK INVENTORY
+  // FITUR SIMPAN PENGELUARAN BARU + STOK INVENTORY (FIXED)
   // ==========================================
   async function handleSimpanPengeluaran(e: React.FormEvent) {
     e.preventDefault();
@@ -302,26 +317,21 @@ export default function Dashboard() {
       // LOGIKA OTOMATIS TAMBAH STOK DARI DESKRIPSI
       // ================================================
       let infoRestockTelegram = "";
-      // Mengambil semua angka dari deskripsi pengeluaran (contoh: "Beli 5000 ml deterjen" => 5000)
-      const qtyDitemukan = parseInt(formPengeluaran.deskripsi.replace(/\D/g, '') || "0", 10);
+      // Gunakan Regex aman: hanya mendeteksi kelompok angka pertama 
+      const matchAngka = formPengeluaran.deskripsi.match(/\d+/);
+      const qtyDitemukan = matchAngka ? parseInt(matchAngka[0], 10) : 0;
 
       if (qtyDitemukan > 0) {
-        setInventory(prev => {
-          let newInventory = { ...prev };
-          if (formPengeluaran.kategori === "Restock Deterjen") {
-            newInventory.deterjen += qtyDitemukan;
-            infoRestockTelegram = `\n📦 *Stok Gudang Bertambah:* +${qtyDitemukan} ml Deterjen`;
-          }
-          if (formPengeluaran.kategori === "Restock Parfum") {
-            newInventory.parfum += qtyDitemukan;
-            infoRestockTelegram = `\n📦 *Stok Gudang Bertambah:* +${qtyDitemukan} ml Parfum`;
-          }
-          if (formPengeluaran.kategori === "Restock Plastik") {
-            newInventory.plastik += qtyDitemukan;
-            infoRestockTelegram = `\n📦 *Stok Gudang Bertambah:* +${qtyDitemukan} Pcs Plastik`;
-          }
-          return newInventory;
-        });
+        if (formPengeluaran.kategori === "Restock Deterjen") {
+          setInventory(prev => ({ ...prev, deterjen: prev.deterjen + qtyDitemukan }));
+          infoRestockTelegram = `\n📦 *Stok Gudang Bertambah:* +${qtyDitemukan} ml Deterjen`;
+        } else if (formPengeluaran.kategori === "Restock Parfum") {
+          setInventory(prev => ({ ...prev, parfum: prev.parfum + qtyDitemukan }));
+          infoRestockTelegram = `\n📦 *Stok Gudang Bertambah:* +${qtyDitemukan} ml Parfum`;
+        } else if (formPengeluaran.kategori === "Restock Plastik") {
+          setInventory(prev => ({ ...prev, plastik: prev.plastik + qtyDitemukan }));
+          infoRestockTelegram = `\n📦 *Stok Gudang Bertambah:* +${qtyDitemukan} Pcs Plastik`;
+        }
       }
       // ================================================
       

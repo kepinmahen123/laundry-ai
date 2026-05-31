@@ -604,7 +604,7 @@ export default function Dashboard() {
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 shrink-0">
               <div><h1 className="text-3xl font-extrabold tracking-tight">Laporan Laba & Rugi 📅</h1><p className={`text-sm mt-1 ${textMuted}`}>Pantau rekap transaksi dan keuntungan toko bersih harian.</p></div>
               <div className="flex gap-2">
-                <select value={calendarMonth} onChange={e => setCalendarMonth(Number(e.target.value))} className={`px-4 py-2 rounded-xl font-bold outline-none cursor-pointer ${glassPanel} text-black dark:text-white`}><value></value>
+                <select value={calendarMonth} onChange={e => setCalendarMonth(Number(e.target.value))} className={`px-4 py-2 rounded-xl font-bold outline-none cursor-pointer ${glassPanel} text-black dark:text-white`}>
                   {namaBulan.map((m, i) => <option key={i} value={i} className="text-black">{m}</option>)}
                 </select>
                 <input type="number" value={calendarYear} onChange={e => setCalendarYear(Number(e.target.value))} className={`px-4 py-2 rounded-xl font-bold outline-none w-24 ${glassPanel}`} />

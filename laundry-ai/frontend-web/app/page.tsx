@@ -277,7 +277,7 @@ export default function Dashboard() {
   }
 
   // ==========================================
-  // FITUR SIMPAN PENGELUARAN BARU
+  // FITUR SIMPAN PENGELUARAN BARU + STOK INVENTORY
   // ==========================================
   async function handleSimpanPengeluaran(e: React.FormEvent) {
     e.preventDefault();
@@ -297,8 +297,35 @@ export default function Dashboard() {
       }]);
       
       if (error) throw new Error(error.message);
+
+      // ================================================
+      // LOGIKA OTOMATIS TAMBAH STOK DARI DESKRIPSI
+      // ================================================
+      let infoRestockTelegram = "";
+      // Mengambil semua angka dari deskripsi pengeluaran (contoh: "Beli 5000 ml deterjen" => 5000)
+      const qtyDitemukan = parseInt(formPengeluaran.deskripsi.replace(/\D/g, '') || "0", 10);
+
+      if (qtyDitemukan > 0) {
+        setInventory(prev => {
+          let newInventory = { ...prev };
+          if (formPengeluaran.kategori === "Restock Deterjen") {
+            newInventory.deterjen += qtyDitemukan;
+            infoRestockTelegram = `\n📦 *Stok Gudang Bertambah:* +${qtyDitemukan} ml Deterjen`;
+          }
+          if (formPengeluaran.kategori === "Restock Parfum") {
+            newInventory.parfum += qtyDitemukan;
+            infoRestockTelegram = `\n📦 *Stok Gudang Bertambah:* +${qtyDitemukan} ml Parfum`;
+          }
+          if (formPengeluaran.kategori === "Restock Plastik") {
+            newInventory.plastik += qtyDitemukan;
+            infoRestockTelegram = `\n📦 *Stok Gudang Bertambah:* +${qtyDitemukan} Pcs Plastik`;
+          }
+          return newInventory;
+        });
+      }
+      // ================================================
       
-      const pesanCaption = `💸 *PENGELUARAN BARU*\n\n📌 *Kategori:* ${formPengeluaran.kategori}\n📝 *Ket:* ${formPengeluaran.deskripsi}\n💰 *Nominal:* Rp ${Number(formPengeluaran.nominal).toLocaleString('id-ID')}`;
+      const pesanCaption = `💸 *PENGELUARAN BARU*\n\n📌 *Kategori:* ${formPengeluaran.kategori}\n📝 *Ket:* ${formPengeluaran.deskripsi}\n💰 *Nominal:* Rp ${Number(formPengeluaran.nominal).toLocaleString('id-ID')}${infoRestockTelegram}`;
       
       const fileData = new FormData();
       fileData.append("chat_id", chatId); 
@@ -572,7 +599,17 @@ export default function Dashboard() {
                   </div>
                   <div>
                     <label className="text-xs font-bold opacity-70 block mb-1">Deskripsi / Keterangan</label>
-                    <textarea required value={formPengeluaran.deskripsi} onChange={e => setFormPengeluaran({...formPengeluaran, deskripsi: e.target.value})} className={`w-full p-3 rounded-xl ${glassInput}`} rows={2} placeholder="Isi pertalite driver Budi..."></textarea>
+                    <textarea 
+                      required 
+                      value={formPengeluaran.deskripsi} 
+                      onChange={e => setFormPengeluaran({...formPengeluaran, deskripsi: e.target.value})} 
+                      className={`w-full p-3 rounded-xl ${glassInput}`} 
+                      rows={2} 
+                      placeholder={formPengeluaran.kategori.includes("Restock") ? "Cth: Beli 5000 ml deterjen" : "Isi pertalite driver Budi..."}>
+                    </textarea>
+                    {formPengeluaran.kategori.includes("Restock") && (
+                      <p className="text-[10px] text-emerald-400 mt-1">💡 Tuliskan angka (ml/pcs) di deskripsi untuk tambah stok otomatis!</p>
+                    )}
                   </div>
                   <div className="border border-white/20 bg-black/10 rounded-xl p-3">
                     <label className="block text-xs font-bold mb-2 opacity-80">📸 Upload Struk / Bon (Wajib)</label>

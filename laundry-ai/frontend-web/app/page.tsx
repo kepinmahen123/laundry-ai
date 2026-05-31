@@ -791,7 +791,7 @@ export default function Dashboard() {
                 <button onClick={generateDanKirimLaporan} disabled={isExporting} className={`px-4 py-2 rounded-xl text-xs md:text-sm font-bold transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2 ${glassPanel} hover:bg-white/10`}>{isExporting ? "⏳ Ekspor..." : "📊 Unduh Excel"}</button>
                 <div className={`flex p-1 rounded-xl hidden md:flex ${glassPanel}`}>
                   <button onClick={() => setViewMode("table")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === "table" ? "bg-white/20 shadow-sm" : "opacity-60 hover:opacity-100"}`}>TABEL</button>
-                  <button onClick={() => setViewMode("grid")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === "grid" ? "bg-white/20 shadow-sm" : "opacity-60 hover:opacity-100"}`}>KANBAN</button>
+                  <button onClick={() => setViewMode("grid")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === "grid" ? "bg-white/20 shadow-sm" : "opacity-60 hover:opacity-100"}`}>GRID</button>
                 </div>
               </div>
             </div>

@@ -39,7 +39,7 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4 font-sans">
       <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border">
-        <h1 className="text-3xl font-extrabold text-center text-blue-700 mb-6">🔒 Portal Admin AI</h1>
+        <h1 className="text-3xl font-extrabold text-center text-blue-700 mb-6">🔒 Portal Admin LaundroAI</h1>
         {errorMsg && <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-center font-bold">{errorMsg}</div>}
         <form onSubmit={handleLogin} className="space-y-4">
           <input type="email" placeholder="Email Admin" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-4 py-3 border rounded-xl text-gray-900" required />

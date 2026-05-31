@@ -51,7 +51,7 @@ export default function Dashboard() {
   const [calendarYear, setCalendarYear] = useState<number>(new Date().getFullYear());
 
   // ==========================================
-  // FIX: STATE INVENTARIS GUDANG + LOCALSTORAGE
+  // STATE INVENTARIS GUDANG + LOCALSTORAGE
   // ==========================================
   const [inventory, setInventory] = useState({ deterjen: 4850, parfum: 1920, plastik: 94 });
 
@@ -791,7 +791,7 @@ export default function Dashboard() {
                 <button onClick={generateDanKirimLaporan} disabled={isExporting} className={`px-4 py-2 rounded-xl text-xs md:text-sm font-bold transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2 ${glassPanel} hover:bg-white/10`}>{isExporting ? "⏳ Ekspor..." : "📊 Unduh Excel"}</button>
                 <div className={`flex p-1 rounded-xl hidden md:flex ${glassPanel}`}>
                   <button onClick={() => setViewMode("table")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === "table" ? "bg-white/20 shadow-sm" : "opacity-60 hover:opacity-100"}`}>TABEL</button>
-                  <button onClick={() => setViewMode("grid")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === "grid" ? "bg-white/20 shadow-sm" : "opacity-60 hover:opacity-100"}`}>GRID</button>
+                  <button onClick={() => setViewMode("grid")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === "grid" ? "bg-white/20 shadow-sm" : "opacity-60 hover:opacity-100"}`}>KANBAN</button>
                 </div>
               </div>
             </div>
@@ -993,7 +993,18 @@ export default function Dashboard() {
                   <label className="block text-xs font-bold mb-1 text-slate-300">{formData.tipe_layanan === "kiloan" ? "⚖️ Berat (KG)" : "🔢 Total Qty (Pcs)"}</label>
                   <input type="number" step={formData.tipe_layanan === "kiloan" ? "0.1" : "1"} required placeholder="0" value={formData.berat_pesanan_kg} onChange={(e) => setFormData({...formData, berat_pesanan_kg: e.target.value})} className={`w-full px-4 py-2.5 text-sm rounded-xl outline-none ${glassInput}`} />
                 </div>
-                <div><label className="block text-xs font-bold mb-1 text-slate-300">💰 Harga per Unit</label><input type="number" required value={formData.harga_per_unit} onChange={(e) => setFormData({...formData, harga_per_unit: e.target.value})} className={`w-full px-4 py-2.5 text-sm rounded-xl outline-none ${glassInput}`} /></div>
+                {/* 👇 MODIFIKASI TERKUNCI UNTUK HARGA PER UNIT 👇 */}
+                <div>
+                  <label className="block text-xs font-bold mb-1 text-slate-300">💰 Harga per Unit</label>
+                  <input 
+                    type="number" 
+                    required 
+                    readOnly 
+                    value={formData.harga_per_unit} 
+                    className={`w-full px-4 py-2.5 text-sm rounded-xl outline-none cursor-not-allowed opacity-70 ${glassInput}`} 
+                  />
+                </div>
+                {/* 👆 AKHIR MODIFIKASI 👆 */}
               </div>
 
               {/* INTEGRASI MANAGEMENT STATUS PIUTANG KASIR */}

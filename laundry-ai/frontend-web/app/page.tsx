@@ -35,6 +35,30 @@ export default function Dashboard() {
   const [viewMode, setViewMode] = useState<string>("grid");
   const [isDarkMode, setIsDarkMode] = useState(true); 
   const [activeMenu, setActiveMenu] = useState("Dashboard");
+  // ==========================================
+  // LOGIKA MENGINGAT POSISI MENU SAAT REFRESH
+  // ==========================================
+  useEffect(() => {
+    // 1. Baca memori saat web pertama kali dimuat
+    const savedMenu = localStorage.getItem("laundro_active_menu");
+    if (savedMenu) {
+      const secureMenus = ["Calendar", "Pengeluaran", "Data Log"];
+      const isUnlocked = sessionStorage.getItem("laundro_secure_unlocked") === "true";
+      
+      // 2. Jika menu terakhir dikunci PIN tapi sesi sudah habis, tendang ke Dashboard
+      if (secureMenus.includes(savedMenu) && !isUnlocked) {
+        setActiveMenu("Dashboard");
+      } else {
+        // 3. Jika aman, kembalikan user ke menu terakhirnya
+        setActiveMenu(savedMenu);
+      }
+    }
+  }, []);
+
+  // 4. Simpan ke memori browser SETIAP KALI user pindah menu
+  useEffect(() => {
+    localStorage.setItem("laundro_active_menu", activeMenu);
+  }, [activeMenu]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
 
   // STATE KEAMANAN (SECURITY LOCK)
@@ -345,6 +369,7 @@ export default function Dashboard() {
     
     // HAPUS INGATAN PIN DARI BROWSER
     sessionStorage.removeItem("laundro_secure_unlocked"); 
+    localStorage.removeItem("laundro_active_menu");
     
     await supabase.auth.signOut(); 
     router.push("/login");

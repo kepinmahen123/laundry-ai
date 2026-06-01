@@ -307,6 +307,39 @@ export default function Dashboard() {
     setIsCalendarModalOpen(true);
   };
 
+  // FUNGSI UNDUH EXCEL / CSV
+  const unduhExcel = () => {
+    // Kita gunakan data pesanan yang sudah disaring (jika ada filterTanggal)
+    const dataUntukDiunduh = filterTanggal 
+      ? pesanan.filter((p: any) => p.created_at && p.created_at.includes(filterTanggal))
+      : pesanan;
+
+    if (dataUntukDiunduh.length === 0) {
+      alert("⚠️ Tidak ada data pesanan di tanggal tersebut untuk diunduh!");
+      return;
+    }
+
+    // 1. Buat Header Kolom (Baris Pertama)
+    let isiCSV = "ID Pesanan,Tanggal,Nama Pelanggan,Paket Layanan,Total Harga,Status Pembayaran\n";
+    
+    // 2. Masukkan Data ke dalam baris-baris Excel
+    dataUntukDiunduh.forEach((p: any) => {
+      const tanggalFormat = new Date(p.created_at || p.createdAt).toLocaleDateString('id-ID');
+      isiCSV += `"${p.id || p.order_id}","${tanggalFormat}","${p.customer_name}","${p.paket_layanan}","Rp ${p.total_harga}","${p.status_pembayaran}"\n`;
+    });
+
+    // 3. Proses Download File
+    const blob = new Blob([isiCSV], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Laporan_Laundry_${filterTanggal || "Semua_Waktu"}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   async function handleLogout() {
     catatLog("Logout", "Admin/Kasir keluar dari sistem.");
     
@@ -1082,9 +1115,39 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="max-w-7xl mx-auto flex flex-col h-full">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 shrink-0">
-              <div><h1 className="text-3xl font-extrabold tracking-tight">Papan Operasional</h1><p className={`text-sm mt-1 ${textMuted}`}>Kelola siklus produksi pakaian pakaian secara real-time.</p></div>
-              <button onClick={() => setIsModalOpen(true)} className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-5 py-3 rounded-xl text-sm font-bold shadow-lg shadow-blue-500/30 border border-white/20 transition-all active:scale-95 flex items-center gap-2">➕ <span>Pesanan Baru</span></button>
+            {/* HEADER DASHBOARD SANGAT KOMPAK (HEMAT RUANG VERTIKAL) */}
+            <div className="flex justify-between items-center mb-2 pb-2 border-b border-white/10 gap-2 shrink-0">
+              <h1 className="text-lg sm:text-2xl font-extrabold tracking-tight flex items-center">
+                Dashboard ⚡ 
+              </h1>
+              
+              {/* KONTROL KANAN (FILTER TANGGAL & EXCEL MINI) */}
+              <div className="flex items-center gap-1.5 sm:gap-3">
+                {/* Filter Tanggal (Desain Padat) */}
+                <div className={`flex items-center px-1.5 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-black/20 border border-white/10 shadow-inner`}>
+                  <span className="text-[11px] sm:text-xs mr-1">📅</span>
+                  <input 
+                    type="date" 
+                    value={filterTanggal} 
+                    onChange={(e) => setFilterTanggal(e.target.value)} 
+                    className="text-[10px] sm:text-xs font-bold outline-none bg-transparent cursor-pointer w-[85px] sm:w-auto" 
+                    style={{ colorScheme: isDarkMode ? 'dark' : 'light' }} 
+                  />
+                  {filterTanggal && (
+                    <button onClick={() => setFilterTanggal("")} className="text-red-400 hover:text-red-500 ml-1 sm:ml-2 text-[10px] sm:text-xs font-bold">✕</button>
+                  )}
+                </div>
+
+                {/* Tombol Excel (Hanya Icon di Layar HP) */}
+                <button 
+                  onClick={unduhExcel} 
+                  title="Unduh Excel"
+                  className="flex items-center justify-center gap-1.5 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-emerald-600/80 hover:bg-emerald-500 text-white font-bold transition-all text-[11px] sm:text-xs"
+                >
+                  <span>📊</span>
+                  <span className="hidden sm:inline">Excel</span>
+                </button>
+              </div>
             </div>
 
             <div className="flex flex-col xl:flex-row justify-between mb-4 gap-4 shrink-0">

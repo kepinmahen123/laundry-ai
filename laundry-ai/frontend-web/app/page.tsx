@@ -69,7 +69,7 @@ export default function Dashboard() {
   const [paymentPhoto, setPaymentPhoto] = useState<File | null>(null);
   const [paymentPreviewUrl, setPaymentPreviewUrl] = useState<string | null>(null);
   
-  const defaultRincian = { baju: 0, celana: 0, kemeja: 0, jaket: 0, celana_dalam: 0, kaos_kaki: 0, dasi: 0 };
+  const defaultRincian = { "👕": 0, "👖": 0, "👔": 0, "🧥": 0, "🩲": 0, "🧦": 0, "🧣": 0 };
   const [rincianItem, setRincianItem] = useState(defaultRincian);
 
   const [formData, setFormData] = useState({ 
@@ -1049,7 +1049,7 @@ export default function Dashboard() {
                 <div className="grid grid-cols-2 gap-3">
                   {Object.keys(rincianItem).map((key) => (
                     <div key={key} className="flex justify-between items-center bg-white/5 p-2 rounded-xl border border-white/10">
-                      <span className="text-xs font-bold capitalize opacity-80 truncate">{key.replace('_', ' ')}</span>
+                      <span className="text-xl md:text-2xl px-2">{key}</span>
                       <div className="flex items-center gap-2">
                         <button type="button" onClick={() => handleRincianChange(key as keyof typeof rincianItem, -1)} className="w-6 h-6 rounded-md bg-red-500/20 text-red-400 font-bold flex items-center justify-center hover:bg-red-500/40 transition-colors">-</button>
                         <span className="text-sm font-bold w-4 text-center">{rincianItem[key as keyof typeof rincianItem]}</span>

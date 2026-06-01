@@ -1116,53 +1116,55 @@ export default function Dashboard() {
         ) : (
           <div className="max-w-7xl mx-auto flex flex-col h-full">
             
-            {/* HEADER DASHBOARD TUNGGAL & BERSIH */}
-            <div className="flex justify-between items-center mb-4 pb-3 border-b border-white/10 gap-2 shrink-0">
-              {/* Ukuran font sekarang disamakan menjadi text-3xl */}
-              <h1 className="text-3xl font-extrabold tracking-tight flex items-center">
-                Dashboard ⚡ 
-              </h1>
+            {/* HEADER DASHBOARD TUNGGAL & BERSIH (LAYOUT 2 BARIS) */}
+            <div className="flex flex-col mb-4 pb-3 border-b border-white/10 gap-3 shrink-0">
               
-              {/* KONTROL KANAN (EXCEL, FILTER, & PESANAN BARU) */}
-              <div className="flex items-center gap-1.5 sm:gap-3">
+              {/* BARIS 1: Judul, Excel, & Filter Tanggal */}
+              <div className="flex justify-between items-center gap-2">
+                <h1 className="text-3xl font-extrabold tracking-tight flex items-center">
+                  Dashboard ⚡ 
+                </h1>
                 
-                {/* 1. Tombol Excel (DIGESER KE KIRI) */}
-                <button 
-                  onClick={unduhExcel} 
-                  title="Unduh Excel"
-                  className="flex items-center justify-center gap-1.5 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-emerald-600/80 hover:bg-emerald-500 text-white font-bold transition-all text-[11px] sm:text-xs"
-                >
-                  <span>📊</span>
-                  <span className="hidden md:inline">Excel</span>
-                </button>
+                {/* KONTROL KANAN ATAS */}
+                <div className="flex items-center gap-1.5 sm:gap-3">
+                  {/* Tombol Excel */}
+                  <button 
+                    onClick={unduhExcel} 
+                    title="Unduh Excel"
+                    className="flex items-center justify-center gap-1.5 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-emerald-600/80 hover:bg-emerald-500 text-white font-bold transition-all text-[11px] sm:text-xs"
+                  >
+                    <span>📊</span>
+                    <span className="hidden md:inline">Excel</span>
+                  </button>
 
-                {/* 2. Filter Tanggal (DIGESER KE TENGAH) */}
-                <div className={`flex items-center px-1.5 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-black/20 border border-white/10 shadow-inner`}>
-                  <span className="text-[11px] sm:text-xs mr-1">📅</span>
-                  <input 
-                    type="date" 
-                    value={filterTanggal} 
-                    onChange={(e) => setFilterTanggal(e.target.value)} 
-                    className="text-[10px] sm:text-xs font-bold outline-none bg-transparent cursor-pointer w-[85px] sm:w-auto" 
-                    style={{ colorScheme: isDarkMode ? 'dark' : 'light' }} 
-                  />
-                  {filterTanggal && (
-                    <button onClick={() => setFilterTanggal("")} className="text-red-400 hover:text-red-500 ml-1 sm:ml-2 text-[10px] sm:text-xs font-bold">✕</button>
-                  )}
+                  {/* Filter Tanggal */}
+                  <div className={`flex items-center px-1.5 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-black/20 border border-white/10 shadow-inner`}>
+                    <span className="text-[11px] sm:text-xs mr-1">📅</span>
+                    <input 
+                      type="date" 
+                      value={filterTanggal} 
+                      onChange={(e) => setFilterTanggal(e.target.value)} 
+                      className="text-[10px] sm:text-xs font-bold outline-none bg-transparent cursor-pointer w-[85px] sm:w-auto" 
+                      style={{ colorScheme: isDarkMode ? 'dark' : 'light' }} 
+                    />
+                    {filterTanggal && (
+                      <button onClick={() => setFilterTanggal("")} className="text-red-400 hover:text-red-500 ml-1 sm:ml-2 text-[10px] sm:text-xs font-bold">✕</button>
+                    )}
+                  </div>
                 </div>
+              </div>
 
-                {/* 3. Tombol Pesanan Baru (TETAP DI KANAN) */}
+              {/* BARIS 2: Tombol Pesanan Baru (Lebar Penuh di HP, Kanan di Laptop) */}
+              <div className="flex justify-end">
                 <button 
                   onClick={() => setIsModalOpen(true)} 
-                  className="flex items-center justify-center gap-1 sm:gap-2 px-2 py-1 sm:px-4 sm:py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-all text-[11px] sm:text-xs shadow-lg shadow-indigo-500/30"
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-all text-sm shadow-lg shadow-indigo-500/30 whitespace-nowrap"
                 >
-                  <span className="text-sm">➕</span>
-                  <span className="hidden sm:inline">Pesanan Baru</span>
+                  <span className="text-base">➕</span>
+                  <span>Pesanan Baru</span>
                 </button>
               </div>
             </div>
-
-            {/* AREA UTAMA KANBAN BOARD */}
 
             {/* AREA UTAMA KANBAN BOARD */}
             {dataTersaring.length === 0 ? (

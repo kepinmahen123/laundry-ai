@@ -149,6 +149,10 @@ export default function Dashboard() {
     e.preventDefault();
     if (inputPin === SECURITY_PIN) {
       setIsSecureUnlocked(true);
+      
+      // SIMPAN INGATAN KE BROWSER
+      sessionStorage.setItem("laundro_secure_unlocked", "true"); 
+      
       setIsPinModalOpen(false);
       setActiveMenu(pendingMenu);
       setInputPin("");
@@ -211,6 +215,7 @@ export default function Dashboard() {
   const [isSubmittingCustomer, setIsSubmittingCustomer] = useState(false);
   const [customerFormData, setCustomerFormData] = useState({ name: "", alamat_detail: "", jarak_ke_toko_km: "" });
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
+  const [isOwnerMode, setIsOwnerMode] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [deliveryPhoto, setDeliveryPhoto] = useState<File | null>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
@@ -229,16 +234,18 @@ export default function Dashboard() {
       else { 
         setSession(session); 
         
-        // --- LOGIKA PEMISAHAN 2 AKUN (OWNER vs KARYAWAN) ---
-        // GANTI tulisan "owner@email.com" di bawah dengan email login utama Anda!
-        const emailOwner = "ipinfxtrade@email.com"; 
-        
+        // 1. Cek Mode Akun (GANTI EMAIL INI DENGAN EMAIL OWNER ANDA)
+        const emailOwner = "owner@email.com"; 
         if (session.user.email === emailOwner) {
-          // Jika yang login adalah Owner, buka semua gembok otomatis!
-          setIsSecureUnlocked(true); 
+          setIsOwnerMode(true);
         } else {
-          // Jika yang login adalah Kasir/Karyawan, biarkan terkunci
-          setIsSecureUnlocked(false); 
+          setIsOwnerMode(false);
+        }
+
+        // 2. Cek Ingatan Browser (Apakah PIN sudah dimasukkan sebelumnya?)
+        const isPinUnlocked = sessionStorage.getItem("laundro_secure_unlocked");
+        if (isPinUnlocked === "true") {
+          setIsSecureUnlocked(true);
         }
 
         ambilData(); 
@@ -296,7 +303,12 @@ export default function Dashboard() {
 
   async function handleLogout() {
     catatLog("Logout", "Admin/Kasir keluar dari sistem.");
-    await supabase.auth.signOut(); router.push("/login");
+    
+    // HAPUS INGATAN PIN DARI BROWSER
+    sessionStorage.removeItem("laundro_secure_unlocked"); 
+    
+    await supabase.auth.signOut(); 
+    router.push("/login");
   }
 
   function bukaModalFoto(id: number, nama: string) {

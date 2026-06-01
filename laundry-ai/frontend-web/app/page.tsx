@@ -370,7 +370,7 @@ export default function Dashboard() {
     // HAPUS INGATAN PIN DARI BROWSER
     sessionStorage.removeItem("laundro_secure_unlocked"); 
     localStorage.removeItem("laundro_active_menu");
-    
+
     await supabase.auth.signOut(); 
     router.push("/login");
   }
@@ -486,9 +486,17 @@ export default function Dashboard() {
   async function handleTambahPesanan(e: React.FormEvent) {
     e.preventDefault();
     
+    // 1. BLOKIR JIKA NOMINAL MASIH Rp 0 (KODE BARU)
+    if (formData.total_harga <= 0) {
+      alert("⚠️ Total tagihan tidak boleh Rp 0! Harap masukkan berat (KG) atau jumlah pakaian terlebih dahulu."); 
+      return;
+    }
+
+    // 2. BLOKIR JIKA BELUM ADA FOTO BUKTI BAYAR (KODE LAMA)
     if (formData.status_pembayaran !== "Belum Bayar" && !paymentPhoto) {
       alert("⚠️ Harap unggah foto bukti transaksi pembayaran (Transfer/QRIS/Cash) terlebih dahulu!"); return;
     }
+    
     setIsSubmitting(true);
     
     try {
@@ -1498,8 +1506,16 @@ export default function Dashboard() {
               )}
 
               <div className="pt-2 flex gap-3 pb-2">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 font-bold py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10">Batal</button>
-                <button type="submit" disabled={isSubmitting} className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 font-bold py-3 rounded-xl border border-white/20 shadow-lg text-white">
+                {/* TOMBOL SIMPAN YANG OTOMATIS MATI JIKA NOMINAL 0 */}
+                <button 
+                  type="submit" 
+                  disabled={isSubmitting || formData.total_harga <= 0} 
+                  className={`flex-1 font-bold py-3 rounded-xl border border-white/20 shadow-lg text-white transition-all ${
+                    formData.total_harga <= 0 
+                      ? 'bg-gray-600/50 opacity-50 cursor-not-allowed' 
+                      : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:opacity-90'
+                  }`}
+                >
                   {isSubmitting ? "Menyimpan..." : "Simpan & Kirim Nota 🚀"}
                 </button>
               </div>

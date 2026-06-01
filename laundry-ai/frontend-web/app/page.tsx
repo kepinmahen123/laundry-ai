@@ -1155,8 +1155,8 @@ export default function Dashboard() {
                   onClick={() => alert("Jangan lupa pasang fungsi onClick asli Anda di kode ini!")} 
                   className="flex items-center justify-center gap-1 sm:gap-2 px-2 py-1 sm:px-4 sm:py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-all text-[11px] sm:text-xs shadow-lg shadow-indigo-500/30"
                 >
-                  <span className="text-sm">➕</span>
-                  <span className="hidden sm:inline">Pesanan Baru</span>
+                  <span className="text-sm">➕ Pesanan Baru</span>
+                  
                 </button>
               </div>
             </div>

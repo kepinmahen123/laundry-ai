@@ -750,7 +750,7 @@ export default function Dashboard() {
         {/* MODUL PENGELUARAN */}
         {activeMenu === "Pengeluaran" ? (
           <div className="max-w-7xl mx-auto flex flex-col h-full">
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight mb-6 -mt-14 md:mt-0 pl-14 md:pl-0">Catat Pengeluaran 💸</h1>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight mb-6 md:mt-0 pl-14 md:pl-0">Catat Pengeluaran 💸</h1>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className={`md:col-span-1 p-6 rounded-3xl ${glassPanel} border-t-4 border-red-500 h-fit`}>
                 <h3 className="font-bold text-lg mb-4 border-b border-white/10 pb-2">Form Kas Keluar</h3>
@@ -840,7 +840,7 @@ export default function Dashboard() {
             </div>
           </div>
         ) : activeMenu === "Data Log" ? (
-          <div className="-mt-14 md:mt-0 pl-14 md:pl-0 mb-6">
+          <div className="md:mt-0 pl-14 md:pl-0 mb-6">
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight mb-2">Audit Trail Log 🛡️</h1>
               <p className="text-sm opacity-60">Sistem merekam semua aktivitas user secara real-time untuk mencegah fraud.</p>
             <div className={`flex-1 overflow-auto rounded-3xl ${glassPanel} p-4`}>
@@ -862,7 +862,7 @@ export default function Dashboard() {
           </div>
         ) : activeMenu === "Inventory" ? (
           <div className="max-w-7xl mx-auto flex flex-col h-full">
-            <div className="mb-6 -mt-14 md:mt-0 pl-14 md:pl-0"><h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Stok Gudang 📦</h1></div>
+            <div className="mb-6 md:mt-0 pl-14 md:pl-0"><h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Stok Gudang 📦</h1></div>
             
             {/* 3 KOTAK RINGKASAN STOK (MOBILE FRIENDLY & BISA DIKLIK) */}
             <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-4">
@@ -963,7 +963,7 @@ export default function Dashboard() {
           </div>
         ) : activeMenu === "Calendar" ? (
           <div className="max-w-7xl mx-auto flex flex-col h-full">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 shrink-0 -mt-14 md:mt-0">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 shrink-0 md:mt-0">
               <div className="pl-14 md:pl-0">
                 <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight flex items-center gap-2 sm:gap-3">
                   Laporan Laba & Rugi 📅
@@ -1067,7 +1067,7 @@ export default function Dashboard() {
           </div>
         ) : activeMenu === "Tracking" ? (
           <div className="max-w-7xl mx-auto h-full flex flex-col">
-             <div className="mb-6 -mt-14 md:mt-0 pl-14 md:pl-0"><h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Tracking Armada 📍</h1><p className={`text-sm mt-1 ${textMuted}`}>Pantau pergerakan armada pengiriman secara real-time.</p></div>
+             <div className="mb-6 md:mt-0 pl-14 md:pl-0"><h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Tracking Armada 📍</h1><p className={`text-sm mt-1 ${textMuted}`}>Pantau pergerakan armada pengiriman secara real-time.</p></div>
              <div className={`flex-1 rounded-3xl overflow-hidden p-2 ${glassPanel}`}>
                 {!isMapLoaded ? (
                   <div className="w-full h-full min-h-[500px] flex items-center justify-center rounded-2xl"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div></div>

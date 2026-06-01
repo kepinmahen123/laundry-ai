@@ -636,14 +636,14 @@ export default function Dashboard() {
             </div>
           </div>
           <nav className="mt-4 px-4 space-y-2">
-            {['Dashboard', 'Tracking', 'Database Customers', 'Calendar', 'Inventory', 'Pengeluaran', 'Data Log'].map((menu) => {
+            {['Dashboard', 'Database Customers', 'Tracking', 'Inventory', 'Calendar', 'Pengeluaran', 'Data Log'].map((menu) => {
               const isLocked = !isSecureUnlocked && ["Calendar", "Pengeluaran", "Data Log"].includes(menu);
               return (
                 <button key={menu} onClick={() => handleMenuClick(menu)} className={`w-full flex items-center justify-between px-4 py-3 rounded-xl font-semibold transition-all duration-300 ${activeMenu === menu ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30 border border-white/20" : `${isDarkMode ? 'text-gray-400 hover:bg-white/10' : 'text-gray-600 hover:bg-white/40'}`}`}>
                   <div className="flex items-center gap-3">
                     {menu === 'Dashboard' && "📊"} {menu === 'Tracking' && "📍"} {menu === 'Database Customers' && "👥"} {menu === 'Calendar' && "📅"} {menu === 'Inventory' && "📦"} {menu === 'Pengeluaran' && "💸"} {menu === 'Data Log' && "🛡️"}
                     <span className="text-sm truncate max-w-[120px]">
-                      {menu === 'Calendar' ? 'Kalender Income' : menu === 'Inventory' ? 'Stok Gudang' : menu}
+                      {menu === 'Calendar' ? 'Pemasukan' : menu === 'Inventory' ? 'Stok Gudang' : menu}
                     </span>
                   </div>
                   {isLocked && <span className="text-xs opacity-50">🔒</span>}

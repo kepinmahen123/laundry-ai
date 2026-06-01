@@ -40,6 +40,9 @@ export default function Dashboard() {
   // STATE KEAMANAN (SECURITY LOCK)
   const [isSecureUnlocked, setIsSecureUnlocked] = useState(false);
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
+  const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
+  const [isNominalHidden, setIsNominalHidden] = useState(false);
+  const [selectedDateDetails, setSelectedDateDetails] = useState<any>(null);
   const [inputPin, setInputPin] = useState("");
   const [pendingMenu, setPendingMenu] = useState("");
   
@@ -223,7 +226,23 @@ export default function Dashboard() {
     async function cekKeamanan() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) router.push("/login");
-      else { setSession(session); ambilData(); }
+      else { 
+        setSession(session); 
+        
+        // --- LOGIKA PEMISAHAN 2 AKUN (OWNER vs KARYAWAN) ---
+        // GANTI tulisan "owner@email.com" di bawah dengan email login utama Anda!
+        const emailOwner = "ipinfxtrade@email.com"; 
+        
+        if (session.user.email === emailOwner) {
+          // Jika yang login adalah Owner, buka semua gembok otomatis!
+          setIsSecureUnlocked(true); 
+        } else {
+          // Jika yang login adalah Kasir/Karyawan, biarkan terkunci
+          setIsSecureUnlocked(false); 
+        }
+
+        ambilData(); 
+      }
       setLoading(false);
     }
     cekKeamanan();
@@ -249,6 +268,31 @@ export default function Dashboard() {
       setInventory({ deterjen: invData.deterjen, parfum: invData.parfum, plastik: invData.plastik });
     }
   }
+
+  const handleKlikTanggal = (day: any) => {
+    // Abaikan jika tidak ada transaksi atau pengeluaran di hari tersebut
+    if (day.qty === 0 && day.total === 0) return; 
+
+    // Ambil data pengeluaran spesifik di hari, bulan, dan tahun yang diklik
+    const pengeluaranHariIni = pengeluaran.filter(p => {
+      if(!p.created_at) return false;
+      const d = new Date(p.created_at);
+      return d.getDate() === day.tanggal && d.getMonth() === calendarMonth && d.getFullYear() === calendarYear;
+    });
+
+    const totalPengeluaranHariIni = pengeluaranHariIni.reduce((acc, curr) => acc + Number(curr.nominal || 0), 0);
+
+    // Simpan data yang sudah disaring untuk ditampilkan di Popup
+    setSelectedDateDetails({
+      tanggal: day.tanggal,
+      jumlahTransaksi: day.qty,
+      totalIncome: day.total,
+      totalPengeluaran: totalPengeluaranHariIni,
+      listPengeluaran: pengeluaranHariIni
+    });
+    
+    setIsCalendarModalOpen(true);
+  };
 
   async function handleLogout() {
     catatLog("Logout", "Admin/Kasir keluar dari sistem.");
@@ -584,7 +628,12 @@ export default function Dashboard() {
         <div>
           <div className="p-6 flex items-center gap-3 mt-4 md:mt-0">
             <div className="w-10 h-10 bg-gradient-to-tr from-blue-600 to-purple-500 text-white rounded-xl flex items-center justify-center font-bold text-xl shadow-lg">L</div>
-            <div><h2 className="font-extrabold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">LaundroAI</h2><p className={`text-xs ${textMuted}`}>Micro ERP</p></div>
+            <div>
+              <h2 className="font-extrabold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">LaundroAI</h2>
+              <p className={`text-[10px] font-black uppercase tracking-widest mt-0.5 ${isSecureUnlocked ? 'text-emerald-400' : 'text-blue-400'}`}>
+                {isSecureUnlocked ? '👑 Mode Owner' : '🧑‍💻 Mode Kasir'}
+              </p>
+            </div>
           </div>
           <nav className="mt-4 px-4 space-y-2">
             {['Dashboard', 'Tracking', 'Database Customers', 'Calendar', 'Inventory', 'Pengeluaran', 'Data Log'].map((menu) => {
@@ -736,7 +785,15 @@ export default function Dashboard() {
         ) : activeMenu === "Calendar" ? (
           <div className="max-w-7xl mx-auto flex flex-col h-full">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 shrink-0">
-              <div><h1 className="text-3xl font-extrabold tracking-tight">Laporan Laba & Rugi 📅</h1><p className={`text-sm mt-1 ${textMuted}`}>Pantau rekap transaksi dan keuntungan toko bersih harian.</p></div>
+              <div>
+                <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-3">
+                  Laporan Laba & Rugi 📅
+                  <button onClick={() => setIsNominalHidden(!isNominalHidden)} className="text-2xl hover:scale-110 transition-transform active:scale-90" title={isNominalHidden ? "Tampilkan Nominal" : "Sembunyikan Nominal"}>
+                    {isNominalHidden ? "🙈" : "👁️"}
+                  </button>
+                </h1>
+                <p className={`text-sm mt-1 ${textMuted}`}>Pantau rekap transaksi dan keuntungan toko bersih harian.</p>
+              </div>
               <div className="flex gap-2">
                 <select value={calendarMonth} onChange={e => setCalendarMonth(Number(e.target.value))} className={`px-4 py-2 rounded-xl font-bold outline-none cursor-pointer ${glassPanel} text-black dark:text-white`}>
                   {namaBulan.map((m, i) => <option key={i} value={i} className="text-black">{m}</option>)}
@@ -744,27 +801,40 @@ export default function Dashboard() {
                 <input type="number" value={calendarYear} onChange={e => setCalendarYear(Number(e.target.value))} className={`px-4 py-2 rounded-xl font-bold outline-none w-24 ${glassPanel}`} />
               </div>
             </div>
-            {/* KARTU RINGKASAN KEUNTUNGAN BERSIH (REVISI MOBILE FRIENDLY) */}
+            {/* KARTU RINGKASAN KEUNTUNGAN BERSIH (REVISI MOBILE FRIENDLY & HIDE NOMINAL) */}
             <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-4">
               <div className={`p-3 sm:p-5 rounded-xl sm:rounded-2xl flex flex-col justify-center ${glassPanel} border-t-4 sm:border-t-0 sm:border-l-4 border-emerald-500`}>
                 <p className="text-[9px] sm:text-xs font-bold uppercase tracking-wider opacity-70 truncate">Income</p>
-                <p className="text-[13px] sm:text-2xl font-black mt-1 text-emerald-400 truncate">Rp {totalBulanRp.toLocaleString("id-ID")}</p>
+                <p className="text-[13px] sm:text-2xl font-black mt-1 text-emerald-400 truncate">
+                  {isNominalHidden ? "Rp •••••••" : `Rp ${totalBulanRp.toLocaleString("id-ID")}`}
+                </p>
               </div>
               <div className={`p-3 sm:p-5 rounded-xl sm:rounded-2xl flex flex-col justify-center ${glassPanel} border-t-4 sm:border-t-0 sm:border-l-4 border-red-500`}>
                 <p className="text-[9px] sm:text-xs font-bold uppercase tracking-wider opacity-70 truncate">Keluar</p>
-                <p className="text-[13px] sm:text-2xl font-black mt-1 text-red-400 truncate">Rp {totalPengeluaranBulanRp.toLocaleString("id-ID")}</p>
+                <p className="text-[13px] sm:text-2xl font-black mt-1 text-red-400 truncate">
+                  {isNominalHidden ? "Rp •••••••" : `Rp ${totalPengeluaranBulanRp.toLocaleString("id-ID")}`}
+                </p>
               </div>
               <div className={`p-3 sm:p-5 rounded-xl sm:rounded-2xl flex flex-col justify-center ${glassPanel} border-t-4 sm:border-t-0 sm:border-l-4 ${labaBersih >= 0 ? 'border-blue-500 bg-blue-900/10' : 'border-yellow-500'}`}>
                 <p className="text-[9px] sm:text-xs font-bold uppercase tracking-wider opacity-70 truncate">Laba</p>
-                <p className={`text-[13px] sm:text-2xl font-black mt-1 truncate ${labaBersih >= 0 ? 'text-blue-400' : 'text-yellow-400'}`}>Rp {labaBersih.toLocaleString("id-ID")}</p>
+                <p className={`text-[13px] sm:text-2xl font-black mt-1 truncate ${labaBersih >= 0 ? 'text-blue-400' : 'text-yellow-400'}`}>
+                  {isNominalHidden ? "Rp •••••••" : `Rp ${labaBersih.toLocaleString("id-ID")}`}
+                </p>
               </div>
             </div>
+
+            {/* AREA GRID TANGGAL KALENDER */}
             <div className="flex-1 overflow-y-auto pb-4 pr-2 scroll-smooth">
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-4">
                 {calendarCards.map(day => (
-                  <div key={day.tanggal} className={`p-4 rounded-2xl border transition-all ${day.qty > 0 ? 'bg-gradient-to-br from-indigo-900/40 to-blue-900/20 border-indigo-500/30 shadow-lg shadow-indigo-500/10' : `${glassPanel} opacity-60 hover:opacity-100`}`}>
+                  <div key={day.tanggal} onClick={() => handleKlikTanggal(day)} className={`p-4 rounded-2xl border transition-all ${day.qty > 0 ? 'bg-gradient-to-br from-indigo-900/40 to-blue-900/20 border-indigo-500/30 shadow-lg shadow-indigo-500/10 cursor-pointer hover:border-indigo-400' : `${glassPanel} opacity-60`}`}>
                     <div className="flex justify-between items-start mb-3"><span className="text-xl font-black opacity-80">{day.tanggal}</span>{day.qty > 0 && <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded">Aktif</span>}</div>
-                    <div className="space-y-1"><p className="text-[11px] opacity-70">Transaksi: <span className="font-bold text-white text-xs">{day.qty}</span></p><p className="text-sm font-black text-emerald-400">Rp {day.total.toLocaleString("id-ID")}</p></div>
+                    <div className="space-y-1">
+                      <p className="text-[11px] opacity-70">Trx: <span className="font-bold text-white text-xs">{day.qty}</span></p>
+                      <p className="text-sm font-black text-emerald-400">
+                        {isNominalHidden ? "Rp •••" : `Rp ${day.total.toLocaleString("id-ID")}`}
+                      </p>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1235,6 +1305,60 @@ export default function Dashboard() {
             <div className="w-full aspect-[3/4] bg-gray-900 rounded-3xl overflow-hidden flex items-center justify-center border border-white/10 shadow-2xl">
               <img src={previewTargetUrl} alt="Bukti" className="w-full h-full object-contain" />
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL POPUP DETAIL KALENDER INCOME */}
+      {isCalendarModalOpen && selectedDateDetails && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] p-4" onClick={() => setIsCalendarModalOpen(false)}>
+          <div className={`rounded-3xl w-full max-w-sm p-6 ${glassPanel} border-white/20 shadow-2xl`} onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-5 border-b border-white/10 pb-3">
+              <h2 className="font-bold text-lg text-indigo-300">📅 Rincian Tgl {selectedDateDetails.tanggal} {namaBulan[calendarMonth]}</h2>
+              <button onClick={() => setIsCalendarModalOpen(false)} className="opacity-70 hover:opacity-100 text-xl">×</button>
+            </div>
+            
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+              {/* Blok Income */}
+              <div className="bg-black/20 p-4 rounded-xl border border-white/5">
+                <p className="text-[10px] opacity-70 font-bold uppercase mb-1">Total Pendapatan</p>
+                <p className="text-2xl font-black text-emerald-400">Rp {selectedDateDetails.totalIncome.toLocaleString("id-ID")}</p>
+                <p className="text-xs mt-1 text-slate-300">Dari <span className="font-bold text-white">{selectedDateDetails.jumlahTransaksi}</span> transaksi customer</p>
+              </div>
+              
+              {/* Blok Pengeluaran */}
+              <div className="bg-black/20 p-4 rounded-xl border border-white/5">
+                <p className="text-[10px] opacity-70 font-bold uppercase mb-1">Total Pengeluaran</p>
+                <p className="text-2xl font-black text-red-400">Rp {selectedDateDetails.totalPengeluaran.toLocaleString("id-ID")}</p>
+                
+                {/* Deskripsi/List Pengeluaran */}
+                <div className="mt-3 pt-3 border-t border-white/10 space-y-2">
+                  <p className="text-[10px] opacity-70 font-bold uppercase">Deskripsi Pengeluaran:</p>
+                  {selectedDateDetails.listPengeluaran.length > 0 ? (
+                    selectedDateDetails.listPengeluaran.map((ex: any) => (
+                      <div key={ex.id} className="flex flex-col text-xs bg-white/5 p-2 rounded-lg border border-white/5">
+                        <div className="flex justify-between items-start mb-1 gap-2">
+                          {/* Label Kategori */}
+                          <span className="font-bold text-indigo-300 bg-indigo-500/20 px-2 py-0.5 rounded text-[10px] whitespace-nowrap">
+                            {ex.kategori}
+                          </span>
+                          {/* Nominal */}
+                          <span className="font-bold text-red-300 whitespace-nowrap">
+                            Rp {Number(ex.nominal).toLocaleString("id-ID")}
+                          </span>
+                        </div>
+                        {/* Deskripsi */}
+                        <span className="opacity-80 mt-1">{ex.deskripsi}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs italic opacity-50 bg-white/5 p-2 rounded-lg">Tidak ada catatan pengeluaran.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+            
+            <button onClick={() => setIsCalendarModalOpen(false)} className="w-full mt-5 py-3 bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl font-bold transition-all">Tutup Rincian</button>
           </div>
         </div>
       )}

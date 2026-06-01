@@ -413,7 +413,14 @@ export default function Dashboard() {
       const orderId = newOrderData && newOrderData[0] ? newOrderData[0].id : "BARU";
       catatLog("Pesanan Baru", `Input Order #${orderId} - ${formData.customer_name} (Rp${formData.total_harga}) - Status: ${formData.status_pembayaran}`);
 
-      const notaDigital = `🧾 *NOTA ${formData.status_pembayaran !== 'Belum Bayar' ? '& BUKTI PEMBAYARAN ' : 'PESANAN '}(#${orderId})* 🧾\n👤 *Pelanggan:* ${formData.customer_name}\n💳 *Keuangan:* ${formData.status_pembayaran.toUpperCase()}\n💰 *TOTAL TAGIHAN: Rp ${formData.total_harga.toLocaleString('id-ID')}*`;
+      // LOGIKA MERANGKUM RINCIAN PAKAIAN KE TELEGRAM
+      let detailPakaianTxt = "";
+      const rincianTerisi = Object.entries(rincianItem).filter(([key, value]) => value > 0);
+      if (rincianTerisi.length > 0) {
+        detailPakaianTxt = "\n\n👕 *Rincian Pakaian:*\n" + rincianTerisi.map(([key, value]) => `▪️ ${key} : ${value} pcs`).join("\n");
+      }
+
+      const notaDigital = `🧾 *NOTA ${formData.status_pembayaran !== 'Belum Bayar' ? '& BUKTI PEMBAYARAN ' : 'PESANAN '}(#${orderId})* 🧾\n👤 *Pelanggan:* ${formData.customer_name}\n💳 *Keuangan:* ${formData.status_pembayaran.toUpperCase()}\n📦 *Paket:* ${formData.paket_layanan} (${formData.tipe_layanan.toUpperCase()})${detailPakaianTxt}\n\n💰 *TOTAL TAGIHAN: Rp ${formData.total_harga.toLocaleString('id-ID')}*`;
 
       if (formData.status_pembayaran !== "Belum Bayar" && paymentPhoto) {
         const telegramFormData = new FormData();
@@ -977,6 +984,22 @@ export default function Dashboard() {
                 <div className="bg-black/20 p-3 rounded-xl border border-white/5"><p className="text-[10px] opacity-60 font-bold mb-1">Layanan & Paket</p><p className="text-xs font-bold text-emerald-400">{detailPesanan.tipe_layanan?.toUpperCase() || "KILOAN"}</p><p className="text-xs opacity-90 mt-0.5">{detailPesanan.paket_layanan}</p></div>
                 <div className="bg-black/20 p-3 rounded-xl border border-white/5"><p className="text-[10px] opacity-60 font-bold mb-1">Metode Pengiriman</p><p className="text-xs font-bold">🚚 {detailPesanan.metode_pengiriman || "Driver"}</p></div>
               </div>
+              {/* TAMPILKAN RINCIAN PAKAIAN JIKA ADA (LEBIH DARI 0) */}
+              {detailPesanan.rincian_item && Object.entries(detailPesanan.rincian_item).filter(([k, v]: any) => v > 0).length > 0 && (
+                <div className="bg-black/20 p-4 rounded-xl border border-white/5">
+                  <h4 className="text-[10px] uppercase tracking-wider font-bold opacity-60 mb-3 border-b border-white/10 pb-2">Rincian Item Pakaian</h4>
+                  <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
+                    {Object.entries(detailPesanan.rincian_item)
+                      .filter(([key, value]: any) => value > 0)
+                      .map(([key, value]: any) => (
+                        <div key={key} className="bg-white/5 flex flex-col items-center justify-center py-2 px-1 rounded-lg border border-white/10 shadow-inner">
+                          <span className="text-2xl mb-1">{key}</span>
+                          <span className="text-[11px] font-bold text-indigo-200">{value} <span className="opacity-50 text-[9px] font-normal">pcs</span></span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
               <div className="bg-black/20 p-4 rounded-xl border border-white/5 space-y-3">
                 <h4 className="text-xs font-bold opacity-60 border-b border-white/10 pb-2">Rincian Pembayaran</h4>
                 <div className="flex justify-between items-center text-sm"><span className="opacity-80">Berat / Qty:</span><span className="font-bold">{detailPesanan.berat_pesanan_kg} {detailPesanan.tipe_layanan === 'satuan' ? 'Pcs' : 'KG'}</span></div>

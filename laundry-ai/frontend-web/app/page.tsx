@@ -50,7 +50,10 @@ export default function Dashboard() {
   const [pendingMenu, setPendingMenu] = useState("");
   
   const [sortBy, setSortBy] = useState<"terbaru" | "terdekat">("terbaru");
-  const [filterTanggal, setFilterTanggal] = useState<string>(""); 
+  const [filterTanggal, setFilterTanggal] = useState<string>(() => {
+     const d = new Date();
+     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+   }); 
   const [filterTanggalPengeluaran, setFilterTanggalPengeluaran] = useState<string>("");
 
   // STATE KALENDER PENDAPATAN

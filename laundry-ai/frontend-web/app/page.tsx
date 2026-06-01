@@ -1115,15 +1115,15 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="max-w-7xl mx-auto flex flex-col h-full">
-            {/* HEADER DASHBOARD SANGAT KOMPAK (HEMAT RUANG VERTIKAL) */}
+            {/* HEADER DASHBOARD SANGAT KOMPAK (DENGAN TOMBOL PESANAN BARU) */}
             <div className="flex justify-between items-center mb-2 pb-2 border-b border-white/10 gap-2 shrink-0">
               <h1 className="text-lg sm:text-2xl font-extrabold tracking-tight flex items-center">
                 Dashboard ⚡ 
               </h1>
               
-              {/* KONTROL KANAN (FILTER TANGGAL & EXCEL MINI) */}
+              {/* KONTROL KANAN (FILTER, EXCEL, & PESANAN BARU) */}
               <div className="flex items-center gap-1.5 sm:gap-3">
-                {/* Filter Tanggal (Desain Padat) */}
+                {/* Filter Tanggal */}
                 <div className={`flex items-center px-1.5 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-black/20 border border-white/10 shadow-inner`}>
                   <span className="text-[11px] sm:text-xs mr-1">📅</span>
                   <input 
@@ -1138,14 +1138,25 @@ export default function Dashboard() {
                   )}
                 </div>
 
-                {/* Tombol Excel (Hanya Icon di Layar HP) */}
+                {/* Tombol Excel */}
                 <button 
                   onClick={unduhExcel} 
                   title="Unduh Excel"
                   className="flex items-center justify-center gap-1.5 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-emerald-600/80 hover:bg-emerald-500 text-white font-bold transition-all text-[11px] sm:text-xs"
                 >
                   <span>📊</span>
-                  <span className="hidden sm:inline">Excel</span>
+                  <span className="hidden md:inline">Excel</span>
+                </button>
+
+                {/* Tombol Pesanan Baru (KEMBALI!) */}
+                <button 
+                  // ⚠️ PENTING: Ganti isi onClick di bawah ini dengan fungsi asli Anda sebelumnya!
+                  // Contoh: onClick={() => setIsModalOpen(true)} atau onClick={() => setActiveMenu("POS Kasir")}
+                  onClick={() => alert("Jangan lupa pasang fungsi onClick asli Anda di kode ini!")} 
+                  className="flex items-center justify-center gap-1 sm:gap-2 px-2 py-1 sm:px-4 sm:py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-all text-[11px] sm:text-xs shadow-lg shadow-indigo-500/30"
+                >
+                  <span className="text-sm">➕</span>
+                  <span className="hidden sm:inline">Pesanan Baru</span>
                 </button>
               </div>
             </div>

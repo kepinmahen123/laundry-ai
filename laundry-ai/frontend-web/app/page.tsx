@@ -947,19 +947,19 @@ export default function Dashboard() {
             {/* KARTU RINGKASAN KEUNTUNGAN BERSIH (BISA DIKLIK) */}
             <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-4">
               <div onClick={() => setIsSummaryModalOpen(true)} className={`cursor-pointer hover:bg-white/5 active:scale-95 transition-all p-3 sm:p-5 rounded-xl sm:rounded-2xl flex flex-col justify-center ${glassPanel} border-t-4 sm:border-t-0 sm:border-l-4 border-emerald-500`}>
-                <p className="text-[9px] sm:text-xs font-bold uppercase tracking-wider opacity-70 truncate">Income</p>
+                <p className="text-[9px] sm:text-xs font-bold uppercase tracking-wider opacity-70 truncate">Pemasukan</p>
                 <p className="text-[13px] sm:text-2xl font-black mt-1 text-emerald-400 truncate">
                   {isNominalHidden ? "Rp •••••••" : `Rp ${totalBulanRp.toLocaleString("id-ID")}`}
                 </p>
               </div>
               <div onClick={() => setIsSummaryModalOpen(true)} className={`cursor-pointer hover:bg-white/5 active:scale-95 transition-all p-3 sm:p-5 rounded-xl sm:rounded-2xl flex flex-col justify-center ${glassPanel} border-t-4 sm:border-t-0 sm:border-l-4 border-red-500`}>
-                <p className="text-[9px] sm:text-xs font-bold uppercase tracking-wider opacity-70 truncate">Keluar</p>
+                <p className="text-[9px] sm:text-xs font-bold uppercase tracking-wider opacity-70 truncate">Pengeluaran</p>
                 <p className="text-[13px] sm:text-2xl font-black mt-1 text-red-400 truncate">
                   {isNominalHidden ? "Rp •••••••" : `Rp ${totalPengeluaranBulanRp.toLocaleString("id-ID")}`}
                 </p>
               </div>
               <div onClick={() => setIsSummaryModalOpen(true)} className={`cursor-pointer hover:bg-white/5 active:scale-95 transition-all p-3 sm:p-5 rounded-xl sm:rounded-2xl flex flex-col justify-center ${glassPanel} border-t-4 sm:border-t-0 sm:border-l-4 ${labaBersih >= 0 ? 'border-blue-500 bg-blue-900/10' : 'border-yellow-500'}`}>
-                <p className="text-[9px] sm:text-xs font-bold uppercase tracking-wider opacity-70 truncate">Laba</p>
+                <p className="text-[9px] sm:text-xs font-bold uppercase tracking-wider opacity-70 truncate">Laba(Rugi)Bersih</p>
                 <p className={`text-[13px] sm:text-2xl font-black mt-1 truncate ${labaBersih >= 0 ? 'text-blue-400' : 'text-yellow-400'}`}>
                   {isNominalHidden ? "Rp •••••••" : `Rp ${labaBersih.toLocaleString("id-ID")}`}
                 </p>

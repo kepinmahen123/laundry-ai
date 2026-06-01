@@ -14,7 +14,7 @@ const chatId = "1556373134";
 const GOOGLE_MAPS_API_KEY = "MASUKKAN_API_KEY_DISINI"; 
 
 // 🔐 CUSTOM PIN 6-ANGKA UNTUK MENU RAHASIA
-const SECURITY_PIN = "123456"; 
+const SECURITY_PIN = "111111"; 
 
 const defaultMapCenter = { lat: -6.2088, lng: 106.8456 }; 
 const mapContainerStyle = { width: "100%", height: "600px", borderRadius: "16px" };
@@ -45,28 +45,16 @@ export default function Dashboard() {
   
   const [sortBy, setSortBy] = useState<"terbaru" | "terdekat">("terbaru");
   const [filterTanggal, setFilterTanggal] = useState<string>(""); 
+  const [filterTanggalPengeluaran, setFilterTanggalPengeluaran] = useState<string>("");
 
   // STATE KALENDER PENDAPATAN
   const [calendarMonth, setCalendarMonth] = useState<number>(new Date().getMonth());
   const [calendarYear, setCalendarYear] = useState<number>(new Date().getFullYear());
 
   // ==========================================
-  // STATE INVENTARIS GUDANG + LOCALSTORAGE
+  // STATE INVENTARIS GUDANG (TERHUBUNG SUPABASE)
   // ==========================================
-  const [inventory, setInventory] = useState({ deterjen: 4850, parfum: 1920, plastik: 94 });
-
-  useEffect(() => {
-    // Ambil data stok terakhir jika halaman direfresh
-    const savedInv = localStorage.getItem("laundro_inventory");
-    if (savedInv) {
-      try { setInventory(JSON.parse(savedInv)); } catch (e) {}
-    }
-  }, []);
-
-  useEffect(() => {
-    // Simpan otomatis ke browser setiap ada perubahan stok
-    localStorage.setItem("laundro_inventory", JSON.stringify(inventory));
-  }, [inventory]);
+  const [inventory, setInventory] = useState({ deterjen: 0, parfum: 0, plastik: 0 });
 
   // STATE PENGELUARAN BARU
   const [formPengeluaran, setFormPengeluaran] = useState({ kategori: "Listrik (Token/Pasca)", deskripsi: "", nominal: "" });
@@ -87,7 +75,7 @@ export default function Dashboard() {
   const [formData, setFormData] = useState({ 
     customer_name: "", alamat_detail: "", jarak_ke_toko_km: "", berat_pesanan_kg: "", latitude: "", longitude: "",
     tipe_layanan: "kiloan", 
-    paket_layanan: "Reguler (Cuci Kering Setrika Lipat)",
+    paket_layanan: "Cuci Kering Setrika Lipat",
     metode_pengiriman: "Diantar Driver Internal",
     status_pembayaran: "Lunas", 
     jumlah_dp: "0",
@@ -97,6 +85,7 @@ export default function Dashboard() {
 
   const [detailPesanan, setDetailPesanan] = useState<any>(null);
 
+  // LOGIKA PENGHITUNGAN TOTAL HARGA & QTY OTOMATIS
   useEffect(() => {
     let jumlah = 0;
     if (formData.tipe_layanan === "satuan") {
@@ -108,6 +97,14 @@ export default function Dashboard() {
     const harga = Number(formData.harga_per_unit) || 0;
     setFormData(prev => ({ ...prev, total_harga: jumlah * harga }));
   }, [formData.berat_pesanan_kg, formData.harga_per_unit, formData.tipe_layanan, rincianItem]);
+
+  // FUNGSI TOGGLE PLUS/MINUS BAJU DLL
+  const handleRincianChange = (item: keyof typeof rincianItem, delta: number) => {
+    setRincianItem(prev => {
+      const newValue = prev[item] + delta;
+      return { ...prev, [item]: Math.max(0, newValue) }; // Mencegah nilai minus
+    });
+  };
 
   function handlePilihFotoPembayaran(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] || null;
@@ -233,6 +230,7 @@ export default function Dashboard() {
   }, [router]);
 
   async function ambilData() {
+    // Tarik Semua Data dari Supabase
     const { data: ordersData } = await supabase.from("orders").select("*").order("id", { ascending: false });
     if (Array.isArray(ordersData)) setPesanan(ordersData);
     
@@ -244,6 +242,12 @@ export default function Dashboard() {
 
     const { data: logData } = await supabase.from("audit_logs").select("*").order("id", { ascending: false }).limit(300);
     if (Array.isArray(logData)) setAuditLogs(logData);
+
+    // Ambil Stok Terbaru Langsung dari Database Supabase
+    const { data: invData } = await supabase.from("inventory").select("*").eq("id", 1).maybeSingle();
+    if (invData) {
+      setInventory({ deterjen: invData.deterjen, parfum: invData.parfum, plastik: invData.plastik });
+    }
   }
 
   async function handleLogout() {
@@ -292,7 +296,7 @@ export default function Dashboard() {
   }
 
   // ==========================================
-  // FITUR SIMPAN PENGELUARAN BARU + STOK INVENTORY (FIXED)
+  // FITUR SIMPAN PENGELUARAN BARU + STOK INVENTORY PERMANEN
   // ==========================================
   async function handleSimpanPengeluaran(e: React.FormEvent) {
     e.preventDefault();
@@ -313,27 +317,26 @@ export default function Dashboard() {
       
       if (error) throw new Error(error.message);
 
-      // ================================================
-      // LOGIKA OTOMATIS TAMBAH STOK DARI DESKRIPSI
-      // ================================================
       let infoRestockTelegram = "";
-      // Gunakan Regex aman: hanya mendeteksi kelompok angka pertama 
       const matchAngka = formPengeluaran.deskripsi.match(/\d+/);
       const qtyDitemukan = matchAngka ? parseInt(matchAngka[0], 10) : 0;
 
-      if (qtyDitemukan > 0) {
+      // UPDATE STOK LANGSUNG KE DATABASE SUPABASE JIKA KATEGORI RESTOCK
+      if (qtyDitemukan > 0 && formPengeluaran.kategori.includes("Restock")) {
+        let updatedInv = { ...inventory };
         if (formPengeluaran.kategori === "Restock Deterjen") {
-          setInventory(prev => ({ ...prev, deterjen: prev.deterjen + qtyDitemukan }));
+          updatedInv.deterjen += qtyDitemukan;
           infoRestockTelegram = `\n📦 *Stok Gudang Bertambah:* +${qtyDitemukan} ml Deterjen`;
         } else if (formPengeluaran.kategori === "Restock Parfum") {
-          setInventory(prev => ({ ...prev, parfum: prev.parfum + qtyDitemukan }));
+          updatedInv.parfum += qtyDitemukan;
           infoRestockTelegram = `\n📦 *Stok Gudang Bertambah:* +${qtyDitemukan} ml Parfum`;
         } else if (formPengeluaran.kategori === "Restock Plastik") {
-          setInventory(prev => ({ ...prev, plastik: prev.plastik + qtyDitemukan }));
+          updatedInv.plastik += qtyDitemukan;
           infoRestockTelegram = `\n📦 *Stok Gudang Bertambah:* +${qtyDitemukan} Pcs Plastik`;
         }
+        
+        await supabase.from("inventory").update(updatedInv).eq("id", 1);
       }
-      // ================================================
       
       const pesanCaption = `💸 *PENGELUARAN BARU*\n\n📌 *Kategori:* ${formPengeluaran.kategori}\n📝 *Ket:* ${formPengeluaran.deskripsi}\n💰 *Nominal:* Rp ${Number(formPengeluaran.nominal).toLocaleString('id-ID')}${infoRestockTelegram}`;
       
@@ -351,14 +354,14 @@ export default function Dashboard() {
       setFormPengeluaran({ kategori: "Listrik (Token/Pasca)", deskripsi: "", nominal: "" });
       setFotoStruk(null);
       setPreviewStrukUrl(null);
-      ambilData();
+      ambilData(); // Akan otomatis menarik data inventaris terbaru dari Supabase
     } catch (err: any) { 
       alert("Gagal menyimpan pengeluaran: " + err.message); 
     }
   }
 
   // ==========================================
-  // SIMPAN PESANAN BARU + FORCE INJECTION TIMESTAMP
+  // SIMPAN PESANAN BARU + POTONG STOK PERMANEN
   // ==========================================
   async function handleTambahPesanan(e: React.FormEvent) {
     e.preventDefault();
@@ -392,22 +395,22 @@ export default function Dashboard() {
       
       if (error) throw new Error(error.message);
 
+      // POTONG STOK SECARA PERMANEN DI SUPABASE KETIKA ADA PESANAN CUSTOMER
       const berat = Number(formData.berat_pesanan_kg) || 1;
-      setInventory(prev => {
-        const nDet = Math.max(0, prev.deterjen - Math.round(berat * 50));
-        const nPar = Math.max(0, prev.parfum - Math.round(berat * 20));
-        const nPlas = Math.max(0, prev.plastik - 1);
-        if (nDet < 1000 || nPar < 500 || nPlas < 10) {
-          fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ chat_id: chatId, text: `⚠️ *DARURAT INVENTARIS* Stok menipis. Segera restock!`, parse_mode: "Markdown" })
-          }).catch(console.error);
-        }
-        return { deterjen: nDet, parfum: nPar, plastik: nPlas };
-      });
+      const nDet = Math.max(0, inventory.deterjen - Math.round(berat * 50));
+      const nPar = Math.max(0, inventory.parfum - Math.round(berat * 20));
+      const nPlas = Math.max(0, inventory.plastik - 1);
+      
+      await supabase.from("inventory").update({ deterjen: nDet, parfum: nPar, plastik: nPlas }).eq("id", 1);
+
+      if (nDet < 1000 || nPar < 500 || nPlas < 10) {
+        fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id: chatId, text: `⚠️ *DARURAT INVENTARIS* Stok menipis. Segera restock!`, parse_mode: "Markdown" })
+        }).catch(console.error);
+      }
 
       const orderId = newOrderData && newOrderData[0] ? newOrderData[0].id : "BARU";
-      
       catatLog("Pesanan Baru", `Input Order #${orderId} - ${formData.customer_name} (Rp${formData.total_harga}) - Status: ${formData.status_pembayaran}`);
 
       const notaDigital = `🧾 *NOTA ${formData.status_pembayaran !== 'Belum Bayar' ? '& BUKTI PEMBAYARAN ' : 'PESANAN '}(#${orderId})* 🧾\n👤 *Pelanggan:* ${formData.customer_name}\n💳 *Keuangan:* ${formData.status_pembayaran.toUpperCase()}\n💰 *TOTAL TAGIHAN: Rp ${formData.total_harga.toLocaleString('id-ID')}*`;
@@ -425,8 +428,9 @@ export default function Dashboard() {
       }
 
       setIsModalOpen(false); 
-      setFormData({ customer_name: "", alamat_detail: "", jarak_ke_toko_km: "", berat_pesanan_kg: "", latitude: "", longitude: "", tipe_layanan: "kiloan", paket_layanan: "Reguler (Cuci Kering Setrika Lipat)", metode_pengiriman: "Diantar Driver Internal", status_pembayaran: "Lunas", jumlah_dp: "0", harga_per_unit: "7000", total_harga: 0 }); 
-      setRincianItem(defaultRincian); setPaymentPhoto(null); setPaymentPreviewUrl(null); ambilData(); 
+      setFormData({ customer_name: "", alamat_detail: "", jarak_ke_toko_km: "", berat_pesanan_kg: "", latitude: "", longitude: "", tipe_layanan: "kiloan", paket_layanan: "Cuci Kering Setrika Lipat", metode_pengiriman: "Diantar Driver Internal", status_pembayaran: "Lunas", jumlah_dp: "0", harga_per_unit: "7000", total_harga: 0 }); 
+      setRincianItem(defaultRincian); setPaymentPhoto(null); setPaymentPreviewUrl(null); 
+      ambilData(); // Tarik ulang data stok agar UI kembali sinkron
 
     } catch (err: any) { alert("Terjadi kesalahan: " + err.message); } 
     finally { setIsSubmitting(false); }
@@ -476,6 +480,22 @@ export default function Dashboard() {
     if(!p.created_at) return false;
     const d = new Date(p.created_at);
     return d.getMonth() === calendarMonth && d.getFullYear() === calendarYear;
+  });
+
+  // LOGIKA FILTER TANGGAL KHUSUS PENGELUARAN
+  const pengeluaranTersaring = pengeluaran.filter(p => {
+    if (!filterTanggalPengeluaran) {
+      // Jika filter kosong, ikuti default (Bulan Ini)
+      if(!p.created_at) return false;
+      const d = new Date(p.created_at);
+      return d.getMonth() === calendarMonth && d.getFullYear() === calendarYear;
+    }
+    // Jika filter diisi, cocokkan dengan tanggal (Format YYYY-MM-DD)
+    const tglRaw = p.created_at;
+    if (!tglRaw) return false; 
+    const d = new Date(tglRaw);
+    const itemLocalYYYYMMDD = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    return itemLocalYYYYMMDD === filterTanggalPengeluaran;
   });
 
   const rekapHarian: { [key: number]: { qty: number, total: number } } = {};
@@ -618,7 +638,7 @@ export default function Dashboard() {
                       placeholder={formPengeluaran.kategori.includes("Restock") ? "Cth: Beli 5000 ml deterjen" : "Isi pertalite driver Budi..."}>
                     </textarea>
                     {formPengeluaran.kategori.includes("Restock") && (
-                      <p className="text-[10px] text-emerald-400 mt-1">💡 Tuliskan angka (ml/pcs) di deskripsi untuk tambah stok otomatis!</p>
+                      <p className="text-[10px] text-emerald-400 mt-1">💡 Tuliskan angka (TOTAL ml/pcs) di deskripsi untuk otomatis tambah stok gudang!</p>
                     )}
                   </div>
                   <div className="border border-white/20 bg-black/10 rounded-xl p-3">
@@ -638,15 +658,25 @@ export default function Dashboard() {
                   <button type="submit" className="w-full bg-gradient-to-r from-red-600 to-rose-600 hover:opacity-90 text-white font-bold py-3 rounded-xl shadow-lg border border-white/20">Tambah Pengeluaran</button>
                 </form>
               </div>
-              <div className={`md:col-span-2 p-6 rounded-3xl ${glassPanel}`}>
-                <h3 className="font-bold text-lg mb-4 border-b border-white/10 pb-2">Riwayat Pengeluaran (Bulan Ini)</h3>
-                <div className="overflow-x-auto max-h-[400px]">
-                  <table className="w-full text-left text-sm">
-                    <thead className={tableHeaderGlass}>
-                      <tr><th className="p-3">Tanggal & Waktu</th><th className="p-3">Kategori</th><th className="p-3">Deskripsi</th><th className="p-3 text-right">Nominal</th></tr>
-                    </thead>
-                    <tbody className={`divide-y ${isDarkMode ? 'divide-white/5' : 'divide-black/5'}`}>
-                      {pengeluaranBulanIni.map(ex => (
+              <div className={`md:col-span-2 p-6 rounded-3xl ${glassPanel} flex flex-col`}>
+  {/* HEADER & FILTER TANGGAL */}
+  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 border-b border-white/10 pb-3 gap-3">
+    <h3 className="font-bold text-lg">Riwayat Pengeluaran</h3>
+    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl bg-black/20 border border-white/10 shadow-inner`}>
+      <span className="text-xs font-bold opacity-60">📅 Filter:</span>
+      <input type="date" value={filterTanggalPengeluaran} onChange={(e) => setFilterTanggalPengeluaran(e.target.value)} className="text-xs font-bold outline-none bg-transparent cursor-pointer" style={{ colorScheme: isDarkMode ? 'dark' : 'light' }} />
+      {filterTanggalPengeluaran && <button onClick={() => setFilterTanggalPengeluaran("")} className="text-red-400 hover:text-red-500 ml-1 text-xs font-bold transition-colors">✕</button>}
+    </div>
+  </div>
+
+  {/* TABEL DATA */}
+  <div className="overflow-x-auto max-h-[400px]">
+    <table className="w-full text-left text-sm">
+      <thead className={tableHeaderGlass}>
+        <tr><th className="p-3">Tanggal & Waktu</th><th className="p-3">Kategori</th><th className="p-3">Deskripsi</th><th className="p-3 text-right">Nominal</th></tr>
+      </thead>
+      <tbody className={`divide-y ${isDarkMode ? 'divide-white/5' : 'divide-black/5'}`}>
+        {pengeluaranTersaring.map(ex => (
                         <tr key={ex.id} className={rowHover}>
                           <td className="p-3 opacity-70 text-[11px] whitespace-nowrap">
                             {new Date(ex.created_at).toLocaleString('id-ID', {
@@ -707,11 +737,20 @@ export default function Dashboard() {
                 <input type="number" value={calendarYear} onChange={e => setCalendarYear(Number(e.target.value))} className={`px-4 py-2 rounded-xl font-bold outline-none w-24 ${glassPanel}`} />
               </div>
             </div>
-            {/* KARTU RINGKASAN KEUNTUNGAN BERSIH */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-              <div className={`p-5 rounded-2xl ${glassPanel} border-l-4 border-emerald-500`}><p className="text-xs font-bold uppercase tracking-wider opacity-70">Total Income Kotor</p><p className="text-2xl font-black mt-1 text-emerald-400">Rp {totalBulanRp.toLocaleString("id-ID")}</p></div>
-              <div className={`p-5 rounded-2xl ${glassPanel} border-l-4 border-red-500`}><p className="text-xs font-bold uppercase tracking-wider opacity-70">Total Pengeluaran</p><p className="text-2xl font-black mt-1 text-red-400">Rp {totalPengeluaranBulanRp.toLocaleString("id-ID")}</p></div>
-              <div className={`p-5 rounded-2xl ${glassPanel} border-l-4 ${labaBersih >= 0 ? 'border-blue-500 bg-blue-900/10' : 'border-yellow-500'}`}><p className="text-xs font-bold uppercase tracking-wider opacity-70">Laba Bersih Toko</p><p className={`text-2xl font-black mt-1 ${labaBersih >= 0 ? 'text-blue-400' : 'text-yellow-400'}`}>Rp {labaBersih.toLocaleString("id-ID")}</p></div>
+            {/* KARTU RINGKASAN KEUNTUNGAN BERSIH (REVISI MOBILE FRIENDLY) */}
+            <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-4">
+              <div className={`p-3 sm:p-5 rounded-xl sm:rounded-2xl flex flex-col justify-center ${glassPanel} border-t-4 sm:border-t-0 sm:border-l-4 border-emerald-500`}>
+                <p className="text-[9px] sm:text-xs font-bold uppercase tracking-wider opacity-70 truncate">Income</p>
+                <p className="text-[13px] sm:text-2xl font-black mt-1 text-emerald-400 truncate">Rp {totalBulanRp.toLocaleString("id-ID")}</p>
+              </div>
+              <div className={`p-3 sm:p-5 rounded-xl sm:rounded-2xl flex flex-col justify-center ${glassPanel} border-t-4 sm:border-t-0 sm:border-l-4 border-red-500`}>
+                <p className="text-[9px] sm:text-xs font-bold uppercase tracking-wider opacity-70 truncate">Keluar</p>
+                <p className="text-[13px] sm:text-2xl font-black mt-1 text-red-400 truncate">Rp {totalPengeluaranBulanRp.toLocaleString("id-ID")}</p>
+              </div>
+              <div className={`p-3 sm:p-5 rounded-xl sm:rounded-2xl flex flex-col justify-center ${glassPanel} border-t-4 sm:border-t-0 sm:border-l-4 ${labaBersih >= 0 ? 'border-blue-500 bg-blue-900/10' : 'border-yellow-500'}`}>
+                <p className="text-[9px] sm:text-xs font-bold uppercase tracking-wider opacity-70 truncate">Laba</p>
+                <p className={`text-[13px] sm:text-2xl font-black mt-1 truncate ${labaBersih >= 0 ? 'text-blue-400' : 'text-yellow-400'}`}>Rp {labaBersih.toLocaleString("id-ID")}</p>
+              </div>
             </div>
             <div className="flex-1 overflow-y-auto pb-4 pr-2 scroll-smooth">
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-4">
@@ -960,11 +999,24 @@ export default function Dashboard() {
             </div>
             
             <form onSubmit={handleTambahPesanan} className="p-6 space-y-4 overflow-y-auto flex-1">
+              
+              {/* TIPE LAYANAN */}
               <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-black/20 border border-white/5">
                 <button type="button" onClick={() => setFormData({...formData, tipe_layanan: "kiloan", harga_per_unit: "7000", berat_pesanan_kg: ""})} className={`py-2 rounded-lg text-sm font-bold transition-all ${formData.tipe_layanan === "kiloan" ? "bg-blue-600 text-white shadow" : "opacity-60"}`}>🧺 Kiloan</button>
                 <button type="button" onClick={() => setFormData({...formData, tipe_layanan: "satuan", harga_per_unit: "15000", berat_pesanan_kg: ""})} className={`py-2 rounded-lg text-sm font-bold transition-all ${formData.tipe_layanan === "satuan" ? "bg-purple-600 text-white shadow" : "opacity-60"}`}>👔 Satuan</button>
               </div>
 
+              {/* PAKET LAYANAN */}
+              <div>
+                <label className="block text-sm font-bold mb-1 opacity-80">Paket Layanan</label>
+                <select value={formData.paket_layanan} onChange={(e) => setFormData({...formData, paket_layanan: e.target.value})} className={`w-full py-3 px-4 rounded-xl outline-none appearance-none cursor-pointer ${glassInput}`}>
+                  <option value="Cuci Kering Setrika Lipat" className="text-black">Cuci Kering Setrika Lipat 👔</option>
+                  <option value="Cuci Kering Lipat" className="text-black">Cuci Kering Lipat 🧺</option>
+                  <option value="Cuci Kilat" className="text-black">Cuci Kilat (Express) ⚡</option>
+                </select>
+              </div>
+
+              {/* METODE PENGIRIMAN */}
               <div>
                 <label className="block text-sm font-bold mb-1 opacity-80">Metode Pengiriman</label>
                 <select value={formData.metode_pengiriman} onChange={(e) => setFormData({...formData, metode_pengiriman: e.target.value})} className={`w-full py-3 px-4 rounded-xl outline-none appearance-none cursor-pointer ${glassInput}`}>
@@ -974,6 +1026,7 @@ export default function Dashboard() {
                 </select>
               </div>
 
+              {/* CUSTOMER AUTOCOMPLETE */}
               <div className="relative">
                 <label className="block text-sm font-bold mb-1 opacity-80">Nama Pelanggan</label>
                 <input type="text" required value={formData.customer_name} onChange={(e) => { setFormData({...formData, customer_name: e.target.value}); setShowSuggestions(true); }} onFocus={() => setShowSuggestions(true)} onBlur={() => setTimeout(() => setShowSuggestions(false), 200)} className={`w-full py-3 px-4 rounded-xl outline-none transition-all ${glassInput}`} placeholder="Ketik nama pelanggan..." />
@@ -988,14 +1041,47 @@ export default function Dashboard() {
 
               <div><label className="block text-sm font-bold mb-1 opacity-80">Alamat Lengkap</label><textarea required value={formData.alamat_detail} onChange={(e) => setFormData({...formData, alamat_detail: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none ${glassInput}`} rows={2}></textarea></div>
               
+              {/* FITUR TOGGLE RINCIAN PAKAIAN (BISA UNTUK KILOAN DAN SATUAN) */}
+              <div className="bg-black/20 p-4 rounded-2xl border border-white/5 space-y-3">
+                <label className="block text-xs font-bold text-indigo-300 uppercase tracking-wider mb-2">
+                  Rincian Item Pakaian <span className="text-[9px] opacity-70 normal-case">(Opsional utk Kiloan, Wajib utk Satuan)</span>
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  {Object.keys(rincianItem).map((key) => (
+                    <div key={key} className="flex justify-between items-center bg-white/5 p-2 rounded-xl border border-white/10">
+                      <span className="text-xs font-bold capitalize opacity-80 truncate">{key.replace('_', ' ')}</span>
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => handleRincianChange(key as keyof typeof rincianItem, -1)} className="w-6 h-6 rounded-md bg-red-500/20 text-red-400 font-bold flex items-center justify-center hover:bg-red-500/40 transition-colors">-</button>
+                        <span className="text-sm font-bold w-4 text-center">{rincianItem[key as keyof typeof rincianItem]}</span>
+                        <button type="button" onClick={() => handleRincianChange(key as keyof typeof rincianItem, 1)} className="w-6 h-6 rounded-md bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center hover:bg-emerald-500/40 transition-colors">+</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-4 bg-white/5 p-4 rounded-2xl border border-white/5">
                 <div>
-                  <label className="block text-xs font-bold mb-1 text-slate-300">{formData.tipe_layanan === "kiloan" ? "⚖️ Berat (KG)" : "🔢 Total Qty (Pcs)"}</label>
-                  <input type="number" step={formData.tipe_layanan === "kiloan" ? "0.1" : "1"} required placeholder="0" value={formData.berat_pesanan_kg} onChange={(e) => setFormData({...formData, berat_pesanan_kg: e.target.value})} className={`w-full px-4 py-2.5 text-sm rounded-xl outline-none ${glassInput}`} />
+                  <label className="block text-[11px] font-bold mb-1 text-slate-300">
+                    {formData.tipe_layanan === "kiloan" ? "⚖️ Berat (KG)" : "🔢 Total Qty (Pcs - Otomatis)"}
+                  </label>
+                  <input 
+                    type="number" 
+                    step={formData.tipe_layanan === "kiloan" ? "0.1" : "1"} 
+                    required 
+                    placeholder="0" 
+                    value={formData.berat_pesanan_kg} 
+                    onChange={(e) => {
+                      if(formData.tipe_layanan === 'kiloan') {
+                        setFormData({...formData, berat_pesanan_kg: e.target.value})
+                      }
+                    }} 
+                    readOnly={formData.tipe_layanan === "satuan"}
+                    className={`w-full px-4 py-2.5 text-sm rounded-xl outline-none ${formData.tipe_layanan === "satuan" ? 'cursor-not-allowed opacity-70' : ''} ${glassInput}`} 
+                  />
                 </div>
-                {/* 👇 MODIFIKASI TERKUNCI UNTUK HARGA PER UNIT 👇 */}
                 <div>
-                  <label className="block text-xs font-bold mb-1 text-slate-300">💰 Harga per Unit</label>
+                  <label className="block text-[11px] font-bold mb-1 text-slate-300">💰 Harga per Unit</label>
                   <input 
                     type="number" 
                     required 
@@ -1004,7 +1090,6 @@ export default function Dashboard() {
                     className={`w-full px-4 py-2.5 text-sm rounded-xl outline-none cursor-not-allowed opacity-70 ${glassInput}`} 
                   />
                 </div>
-                {/* 👆 AKHIR MODIFIKASI 👆 */}
               </div>
 
               {/* INTEGRASI MANAGEMENT STATUS PIUTANG KASIR */}

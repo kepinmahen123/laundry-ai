@@ -1116,12 +1116,14 @@ export default function Dashboard() {
         ) : (
           <div className="max-w-7xl mx-auto flex flex-col h-full">
             
-            {/* HEADER DASHBOARD TUNGGAL & BERSIH (LAYOUT 2 BARIS) */}
-            <div className="flex flex-col mb-4 pb-3 border-b border-white/10 gap-3 shrink-0">
+            {/* HEADER DASHBOARD TUNGGAL & BERSIH (LAYOUT 2 BARIS, NAIK SEJAJAR HAMBURGER) */}
+            <div className="flex flex-col mb-4 pb-3 border-b border-white/10 gap-3 shrink-0 -mt-14 md:mt-0">
               
               {/* BARIS 1: Judul, Excel, & Filter Tanggal */}
               <div className="flex justify-between items-center gap-2">
-                <h1 className="text-3xl font-extrabold tracking-tight flex items-center">
+                
+                {/* pl-14 md:pl-0 ditambahkan agar tulisan tidak tertutup tombol hamburger di HP */}
+                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight flex items-center pl-14 md:pl-0">
                   Dashboard ⚡ 
                 </h1>
                 
@@ -1137,14 +1139,15 @@ export default function Dashboard() {
                     <span className="hidden md:inline">Excel</span>
                   </button>
 
-                  {/* Filter Tanggal */}
+                  {/* Filter Tanggal (DIPERLEBAR) */}
                   <div className={`flex items-center px-1.5 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-black/20 border border-white/10 shadow-inner`}>
                     <span className="text-[11px] sm:text-xs mr-1">📅</span>
                     <input 
                       type="date" 
                       value={filterTanggal} 
                       onChange={(e) => setFilterTanggal(e.target.value)} 
-                      className="text-[10px] sm:text-xs font-bold outline-none bg-transparent cursor-pointer w-[85px] sm:w-auto" 
+                      // Lebar diperluas dari w-[85px] menjadi w-[100px]
+                      className="text-[10px] sm:text-xs font-bold outline-none bg-transparent cursor-pointer w-[100px] sm:w-auto" 
                       style={{ colorScheme: isDarkMode ? 'dark' : 'light' }} 
                     />
                     {filterTanggal && (

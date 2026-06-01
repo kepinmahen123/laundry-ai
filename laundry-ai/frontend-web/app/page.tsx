@@ -1115,15 +1115,28 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="max-w-7xl mx-auto flex flex-col h-full">
-            {/* HEADER DASHBOARD SANGAT KOMPAK (DENGAN TOMBOL PESANAN BARU) */}
-            <div className="flex justify-between items-center mb-2 pb-2 border-b border-white/10 gap-2 shrink-0">
-              <h1 className="text-lg sm:text-2xl font-extrabold tracking-tight flex items-center">
+            
+            {/* HEADER DASHBOARD TUNGGAL & BERSIH */}
+            <div className="flex justify-between items-center mb-4 pb-3 border-b border-white/10 gap-2 shrink-0">
+              {/* Ukuran font sekarang disamakan menjadi text-3xl */}
+              <h1 className="text-3xl font-extrabold tracking-tight flex items-center">
                 Dashboard ⚡ 
               </h1>
               
-              {/* KONTROL KANAN (FILTER, EXCEL, & PESANAN BARU) */}
+              {/* KONTROL KANAN (EXCEL, FILTER, & PESANAN BARU) */}
               <div className="flex items-center gap-1.5 sm:gap-3">
-                {/* Filter Tanggal */}
+                
+                {/* 1. Tombol Excel (DIGESER KE KIRI) */}
+                <button 
+                  onClick={unduhExcel} 
+                  title="Unduh Excel"
+                  className="flex items-center justify-center gap-1.5 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-emerald-600/80 hover:bg-emerald-500 text-white font-bold transition-all text-[11px] sm:text-xs"
+                >
+                  <span>📊</span>
+                  <span className="hidden md:inline">Excel</span>
+                </button>
+
+                {/* 2. Filter Tanggal (DIGESER KE TENGAH) */}
                 <div className={`flex items-center px-1.5 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-black/20 border border-white/10 shadow-inner`}>
                   <span className="text-[11px] sm:text-xs mr-1">📅</span>
                   <input 
@@ -1138,21 +1151,9 @@ export default function Dashboard() {
                   )}
                 </div>
 
-                {/* Tombol Excel */}
+                {/* 3. Tombol Pesanan Baru (TETAP DI KANAN) */}
                 <button 
-                  onClick={unduhExcel} 
-                  title="Unduh Excel"
-                  className="flex items-center justify-center gap-1.5 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-emerald-600/80 hover:bg-emerald-500 text-white font-bold transition-all text-[11px] sm:text-xs"
-                >
-                  <span>📊</span>
-                  <span className="hidden md:inline">Excel</span>
-                </button>
-
-                {/* Tombol Pesanan Baru (KEMBALI!) */}
-                <button 
-                  // ⚠️ PENTING: Ganti isi onClick di bawah ini dengan fungsi asli Anda sebelumnya!
-                  // Contoh: onClick={() => setIsModalOpen(true)} atau onClick={() => setActiveMenu("POS Kasir")}
-                  onClick={() => alert("Jangan lupa pasang fungsi onClick asli Anda di kode ini!")} 
+                  onClick={() => setIsModalOpen(true)} 
                   className="flex items-center justify-center gap-1 sm:gap-2 px-2 py-1 sm:px-4 sm:py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-all text-[11px] sm:text-xs shadow-lg shadow-indigo-500/30"
                 >
                   <span className="text-sm">➕</span>
@@ -1161,22 +1162,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="flex flex-col xl:flex-row justify-between mb-4 gap-4 shrink-0">
-              <div className="flex gap-3 flex-wrap">
-                <div className={`flex items-center gap-2 px-4 py-2 rounded-xl ${glassPanel}`}>
-                  <span className="text-sm font-bold opacity-60">📅 Filter Pembuatan:</span>
-                  <input type="date" value={filterTanggal} onChange={(e) => setFilterTanggal(e.target.value)} className={`text-xs md:text-sm font-bold outline-none bg-transparent cursor-pointer`} style={{ colorScheme: isDarkMode ? 'dark' : 'light' }} />
-                  {filterTanggal && <button onClick={() => setFilterTanggal("")} className="text-red-400 hover:text-red-500 ml-1 text-xs font-bold transition-colors">✕</button>}
-                </div>
-              </div>
-              <div className="flex gap-3 flex-wrap">
-                <button onClick={generateDanKirimLaporan} disabled={isExporting} className={`px-4 py-2 rounded-xl text-xs md:text-sm font-bold transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2 ${glassPanel} hover:bg-white/10`}>{isExporting ? "⏳ Ekspor..." : "📊 Unduh Excel"}</button>
-                <div className={`flex p-1 rounded-xl hidden md:flex ${glassPanel}`}>
-                  <button onClick={() => setViewMode("table")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === "table" ? "bg-white/20 shadow-sm" : "opacity-60 hover:opacity-100"}`}>TABEL</button>
-                  <button onClick={() => setViewMode("grid")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === "grid" ? "bg-white/20 shadow-sm" : "opacity-60 hover:opacity-100"}`}>KANBAN</button>
-                </div>
-              </div>
-            </div>
+            {/* AREA UTAMA KANBAN BOARD */}
 
             {/* AREA UTAMA KANBAN BOARD */}
             {dataTersaring.length === 0 ? (

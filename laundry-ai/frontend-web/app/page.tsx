@@ -1095,7 +1095,7 @@ export default function Dashboard() {
         ) : activeMenu === "Database Customers" ? (
           <div className="max-w-7xl mx-auto overflow-x-auto">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 -mt-14 md:mt-0">
-              <div className="pl-14 md:pl-0"><h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Database Pelanggan 👥</h1><p className={`text-sm mt-1 ${textMuted}`}>Kelola profil pelanggan untuk fitur Autofill otomatis.</p></div>
+              <div className="pl-14 md:pl-0"><h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Database 👥</h1><p className={`text-sm mt-1 ${textMuted}`}>Kelola profil pelanggan untuk fitur Autofill otomatis.</p></div>
               <button onClick={() => setIsCustomerModalOpen(true)} className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-5 py-3 rounded-xl text-sm font-bold shadow-lg shadow-purple-500/30 border border-white/20 transition-all active:scale-95 flex items-center gap-2">➕ <span>Customer Baru</span></button>
             </div>
             {customers.length === 0 ? (

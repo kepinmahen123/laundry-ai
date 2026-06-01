@@ -42,6 +42,9 @@ export default function Dashboard() {
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
   const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
   const [isNominalHidden, setIsNominalHidden] = useState(false);
+  const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
+  const [isInventoryModalOpen, setIsInventoryModalOpen] = useState(false);
+  const [filterTanggalInventory, setFilterTanggalInventory] = useState<string>("");
   const [selectedDateDetails, setSelectedDateDetails] = useState<any>(null);
   const [inputPin, setInputPin] = useState("");
   const [pendingMenu, setPendingMenu] = useState("");
@@ -529,7 +532,7 @@ export default function Dashboard() {
     } catch (err) { alert("Kesalahan sistem."); } finally { setIsExporting(false); }
   }
 
-  // ==========================================
+// ==========================================
   // FIX LOGIKA KALENDER & PENGELUARAN
   // ==========================================
   const pesananBulanIni = pesanan.filter(p => {
@@ -545,22 +548,7 @@ export default function Dashboard() {
     return d.getMonth() === calendarMonth && d.getFullYear() === calendarYear;
   });
 
-  // LOGIKA FILTER TANGGAL KHUSUS PENGELUARAN
-  const pengeluaranTersaring = pengeluaran.filter(p => {
-    if (!filterTanggalPengeluaran) {
-      // Jika filter kosong, ikuti default (Bulan Ini)
-      if(!p.created_at) return false;
-      const d = new Date(p.created_at);
-      return d.getMonth() === calendarMonth && d.getFullYear() === calendarYear;
-    }
-    // Jika filter diisi, cocokkan dengan tanggal (Format YYYY-MM-DD)
-    const tglRaw = p.created_at;
-    if (!tglRaw) return false; 
-    const d = new Date(tglRaw);
-    const itemLocalYYYYMMDD = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-    return itemLocalYYYYMMDD === filterTanggalPengeluaran;
-  });
-
+  // REKAP PENDAPATAN HARIAN
   const rekapHarian: { [key: number]: { qty: number, total: number } } = {};
   pesananBulanIni.forEach(p => {
      const tglRaw = p.created_at || p.createdAt;
@@ -571,12 +559,33 @@ export default function Dashboard() {
      rekapHarian[tgl].total += Number(p.total_harga || 0);
   });
 
+  // REKAP PENGELUARAN HARIAN
+  const pengeluaranHarian: { [key: number]: number } = {};
+  pengeluaranBulanIni.forEach(p => {
+     const d = new Date(p.created_at);
+     const tgl = d.getDate();
+     if(!pengeluaranHarian[tgl]) pengeluaranHarian[tgl] = 0;
+     pengeluaranHarian[tgl] += Number(p.nominal || 0);
+  });
+
+  // GABUNGKAN DATA UNTUK KALENDER
   const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
   const calendarCards = [];
   for(let i = 1; i <= daysInMonth; i++) {
-     calendarCards.push({ tanggal: i, qty: rekapHarian[i]?.qty || 0, total: rekapHarian[i]?.total || 0 });
+     const income = rekapHarian[i]?.total || 0;
+     const expense = pengeluaranHarian[i] || 0;
+     const labaRugiHarian = income - expense; 
+
+     calendarCards.push({ 
+       tanggal: i, 
+       qty: rekapHarian[i]?.qty || 0, 
+       total: income, 
+       pengeluaran: expense,
+       labaRugi: labaRugiHarian 
+     });
   }
 
+  // TOTAL RINGKASAN ATAS
   const totalBulanQty = calendarCards.reduce((acc, curr) => acc + curr.qty, 0);
   const totalBulanRp = pesananBulanIni.reduce((acc, curr) => acc + Number(curr.total_harga || 0), 0);
   const totalPengeluaranBulanRp = pengeluaranBulanIni.reduce((acc, curr) => acc + Number(curr.nominal || 0), 0);
@@ -587,6 +596,36 @@ export default function Dashboard() {
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4 mx-auto"></div></div>;
   if (!session) return null;
+
+  // LOGIKA FILTER TANGGAL KHUSUS PENGELUARAN (YANG SEMPAT TERHAPUS)
+  const pengeluaranTersaring = pengeluaran.filter(p => {
+    if (!filterTanggalPengeluaran) {
+      if(!p.created_at) return false;
+      const d = new Date(p.created_at);
+      return d.getMonth() === calendarMonth && d.getFullYear() === calendarYear;
+    }
+    const tglRaw = p.created_at;
+    if (!tglRaw) return false; 
+    const d = new Date(tglRaw);
+    const itemLocalYYYYMMDD = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    return itemLocalYYYYMMDD === filterTanggalPengeluaran;
+  });
+
+  // LOGIKA FILTER TANGGAL KHUSUS STOK GUDANG
+  const stokTersaring = pengeluaran.filter(p => {
+    // 1. Pastikan hanya mengambil data Restock Gudang
+    if (!p.kategori.includes("Restock")) return false; 
+
+    // 2. Jika filter tanggal kosong, tampilkan semua riwayat restock
+    if (!filterTanggalInventory) return true; 
+    
+    // 3. Jika filter diisi, cocokkan dengan tanggal (Format YYYY-MM-DD)
+    const tglRaw = p.created_at;
+    if (!tglRaw) return false; 
+    const d = new Date(tglRaw);
+    const itemLocalYYYYMMDD = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    return itemLocalYYYYMMDD === filterTanggalInventory;
+  });
 
   // ==========================================
   // FILTERING DASHBOARD & SORTING
@@ -788,10 +827,102 @@ export default function Dashboard() {
         ) : activeMenu === "Inventory" ? (
           <div className="max-w-7xl mx-auto flex flex-col h-full">
             <div className="mb-6"><h1 className="text-3xl font-extrabold tracking-tight">Stok Gudang 📦</h1></div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className={`p-6 rounded-2xl ${glassPanel} border-t-4 border-t-blue-500`}><p className="text-sm font-bold opacity-70">🧼 Deterjen Utama</p><p className="text-2xl font-mono text-blue-400">{inventory.deterjen} ml</p></div>
-              <div className={`p-6 rounded-2xl ${glassPanel} border-t-4 border-t-purple-500`}><p className="text-sm font-bold opacity-70">🌸 Parfum Premium</p><p className="text-2xl font-mono text-purple-400">{inventory.parfum} ml</p></div>
-              <div className={`p-6 rounded-2xl ${glassPanel} border-t-4 border-t-emerald-500`}><p className="text-sm font-bold opacity-70">🛍️ Plastik Packing</p><p className="text-2xl font-mono text-emerald-400">{inventory.plastik} Pcs</p></div>
+            
+            {/* 3 KOTAK RINGKASAN STOK (MOBILE FRIENDLY & BISA DIKLIK) */}
+            <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-4">
+              <div onClick={() => setIsInventoryModalOpen(true)} className={`cursor-pointer hover:bg-white/5 active:scale-95 transition-all p-3 sm:p-5 rounded-xl sm:rounded-2xl flex flex-col justify-center ${glassPanel} border-t-4 sm:border-t-0 sm:border-l-4 border-blue-500`}>
+                <p className="text-[9px] sm:text-xs font-bold uppercase tracking-wider opacity-70 truncate">Deterjen</p>
+                <p className="text-[13px] sm:text-2xl font-mono font-black mt-1 text-blue-400 truncate">{inventory.deterjen}</p>
+              </div>
+              <div onClick={() => setIsInventoryModalOpen(true)} className={`cursor-pointer hover:bg-white/5 active:scale-95 transition-all p-3 sm:p-5 rounded-xl sm:rounded-2xl flex flex-col justify-center ${glassPanel} border-t-4 sm:border-t-0 sm:border-l-4 border-purple-500`}>
+                <p className="text-[9px] sm:text-xs font-bold uppercase tracking-wider opacity-70 truncate">Parfum</p>
+                <p className="text-[13px] sm:text-2xl font-mono font-black mt-1 text-purple-400 truncate">{inventory.parfum}</p>
+              </div>
+              <div onClick={() => setIsInventoryModalOpen(true)} className={`cursor-pointer hover:bg-white/5 active:scale-95 transition-all p-3 sm:p-5 rounded-xl sm:rounded-2xl flex flex-col justify-center ${glassPanel} border-t-4 sm:border-t-0 sm:border-l-4 border-emerald-500`}>
+                <p className="text-[9px] sm:text-xs font-bold uppercase tracking-wider opacity-70 truncate">Plastik</p>
+                <p className="text-[13px] sm:text-2xl font-mono font-black mt-1 text-emerald-400 truncate">{inventory.plastik}</p>
+              </div>
+            </div>
+
+            {/* MODAL POPUP RINCIAN STOK GUDANG (NOMINAL UTUH) */}
+      {isInventoryModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] p-4" onClick={() => setIsInventoryModalOpen(false)}>
+          <div className={`rounded-3xl w-full max-w-sm p-6 ${glassPanel} border-white/20 shadow-2xl`} onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-5 border-b border-white/10 pb-3">
+              <h2 className="font-bold text-lg text-indigo-300">📦 Rincian Stok Gudang</h2>
+              <button onClick={() => setIsInventoryModalOpen(false)} className="opacity-70 hover:opacity-100 text-xl">×</button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="bg-black/20 p-4 rounded-xl border border-white/5 border-l-4 border-l-blue-500">
+                <p className="text-xs opacity-70 font-bold uppercase mb-1">🧼 Deterjen</p>
+                <p className="text-2xl font-mono font-black text-blue-400 break-words">{inventory.deterjen} ml</p>
+              </div>
+              
+              <div className="bg-black/20 p-4 rounded-xl border border-white/5 border-l-4 border-l-purple-500">
+                <p className="text-xs opacity-70 font-bold uppercase mb-1">🌸 Parfum</p>
+                <p className="text-2xl font-mono font-black text-purple-400 break-words">{inventory.parfum} ml</p>
+              </div>
+
+              <div className="bg-black/20 p-4 rounded-xl border border-white/5 border-l-4 border-l-emerald-500">
+                <p className="text-xs opacity-70 font-bold uppercase mb-1">🛍️ Plastik Packing</p>
+                <p className="text-2xl font-mono font-black text-emerald-400 break-words">{inventory.plastik} Pcs</p>
+              </div>
+            </div>
+            
+            <button onClick={() => setIsInventoryModalOpen(false)} className="w-full mt-6 py-3 bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl font-bold transition-all">Tutup Rincian</button>
+          </div>
+        </div>
+      )}
+
+            {/* TABEL RIWAYAT STOK MASUK (DENGAN FILTER TANGGAL) */}
+            <div className={`flex-1 flex flex-col p-6 rounded-3xl ${glassPanel} overflow-hidden`}>
+              {/* HEADER & FILTER TANGGAL */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 border-b border-white/10 pb-3 gap-3">
+                <h3 className="font-bold text-lg flex items-center gap-2">
+                  ⏳ Riwayat Stok Masuk
+                </h3>
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl bg-black/20 border border-white/10 shadow-inner`}>
+                  <span className="text-xs font-bold opacity-60">📅 Filter:</span>
+                  <input type="date" value={filterTanggalInventory} onChange={(e) => setFilterTanggalInventory(e.target.value)} className="text-xs font-bold outline-none bg-transparent cursor-pointer" style={{ colorScheme: isDarkMode ? 'dark' : 'light' }} />
+                  {filterTanggalInventory && <button onClick={() => setFilterTanggalInventory("")} className="text-red-400 hover:text-red-500 ml-1 text-xs font-bold transition-colors">✕</button>}
+                </div>
+              </div>
+
+              {/* TABEL DATA */}
+              <div className="overflow-x-auto flex-1 max-h-[400px] pr-2 scroll-smooth">
+                <table className="w-full text-left text-sm">
+                  <thead className={tableHeaderGlass}>
+                    <tr>
+                      <th className="p-3 font-semibold text-sm tracking-wide">Tanggal & Waktu</th>
+                      <th className="p-3 font-semibold text-sm tracking-wide">Kategori Barang</th>
+                      <th className="p-3 font-semibold text-sm tracking-wide">Deskripsi Penambahan</th>
+                    </tr>
+                  </thead>
+                  <tbody className={`divide-y ${isDarkMode ? 'divide-white/5' : 'divide-black/5'}`}>
+                    {stokTersaring.map((stok) => (
+                        <tr key={stok.id} className={`transition-colors ${rowHover}`}>
+                          <td className="p-3 opacity-70 text-[11px] whitespace-nowrap">
+                            {new Date(stok.created_at).toLocaleString('id-ID', {
+                              day: '2-digit', month: 'short', year: 'numeric',
+                              hour: '2-digit', minute: '2-digit'
+                            })} WIB
+                          </td>
+                          <td className="p-3 font-bold text-indigo-400">{stok.kategori}</td>
+                          <td className="p-3 text-xs">{stok.deskripsi}</td>
+                        </tr>
+                      ))}
+                    {stokTersaring.length === 0 && (
+                      <tr>
+                        <td colSpan={3} className="text-center p-8 opacity-50">
+                          <div className="text-4xl mb-2">📦</div>
+                          Belum ada riwayat stok masuk di tanggal tersebut.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         ) : activeMenu === "Calendar" ? (
@@ -813,21 +944,21 @@ export default function Dashboard() {
                 <input type="number" value={calendarYear} onChange={e => setCalendarYear(Number(e.target.value))} className={`px-4 py-2 rounded-xl font-bold outline-none w-24 ${glassPanel}`} />
               </div>
             </div>
-            {/* KARTU RINGKASAN KEUNTUNGAN BERSIH (REVISI MOBILE FRIENDLY & HIDE NOMINAL) */}
+            {/* KARTU RINGKASAN KEUNTUNGAN BERSIH (BISA DIKLIK) */}
             <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-4">
-              <div className={`p-3 sm:p-5 rounded-xl sm:rounded-2xl flex flex-col justify-center ${glassPanel} border-t-4 sm:border-t-0 sm:border-l-4 border-emerald-500`}>
+              <div onClick={() => setIsSummaryModalOpen(true)} className={`cursor-pointer hover:bg-white/5 active:scale-95 transition-all p-3 sm:p-5 rounded-xl sm:rounded-2xl flex flex-col justify-center ${glassPanel} border-t-4 sm:border-t-0 sm:border-l-4 border-emerald-500`}>
                 <p className="text-[9px] sm:text-xs font-bold uppercase tracking-wider opacity-70 truncate">Income</p>
                 <p className="text-[13px] sm:text-2xl font-black mt-1 text-emerald-400 truncate">
                   {isNominalHidden ? "Rp •••••••" : `Rp ${totalBulanRp.toLocaleString("id-ID")}`}
                 </p>
               </div>
-              <div className={`p-3 sm:p-5 rounded-xl sm:rounded-2xl flex flex-col justify-center ${glassPanel} border-t-4 sm:border-t-0 sm:border-l-4 border-red-500`}>
+              <div onClick={() => setIsSummaryModalOpen(true)} className={`cursor-pointer hover:bg-white/5 active:scale-95 transition-all p-3 sm:p-5 rounded-xl sm:rounded-2xl flex flex-col justify-center ${glassPanel} border-t-4 sm:border-t-0 sm:border-l-4 border-red-500`}>
                 <p className="text-[9px] sm:text-xs font-bold uppercase tracking-wider opacity-70 truncate">Keluar</p>
                 <p className="text-[13px] sm:text-2xl font-black mt-1 text-red-400 truncate">
                   {isNominalHidden ? "Rp •••••••" : `Rp ${totalPengeluaranBulanRp.toLocaleString("id-ID")}`}
                 </p>
               </div>
-              <div className={`p-3 sm:p-5 rounded-xl sm:rounded-2xl flex flex-col justify-center ${glassPanel} border-t-4 sm:border-t-0 sm:border-l-4 ${labaBersih >= 0 ? 'border-blue-500 bg-blue-900/10' : 'border-yellow-500'}`}>
+              <div onClick={() => setIsSummaryModalOpen(true)} className={`cursor-pointer hover:bg-white/5 active:scale-95 transition-all p-3 sm:p-5 rounded-xl sm:rounded-2xl flex flex-col justify-center ${glassPanel} border-t-4 sm:border-t-0 sm:border-l-4 ${labaBersih >= 0 ? 'border-blue-500 bg-blue-900/10' : 'border-yellow-500'}`}>
                 <p className="text-[9px] sm:text-xs font-bold uppercase tracking-wider opacity-70 truncate">Laba</p>
                 <p className={`text-[13px] sm:text-2xl font-black mt-1 truncate ${labaBersih >= 0 ? 'text-blue-400' : 'text-yellow-400'}`}>
                   {isNominalHidden ? "Rp •••••••" : `Rp ${labaBersih.toLocaleString("id-ID")}`}
@@ -835,16 +966,62 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {/* MODAL POPUP RINCIAN TOTAL BULANAN (NOMINAL UTUH) */}
+      {isSummaryModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] p-4" onClick={() => setIsSummaryModalOpen(false)}>
+          <div className={`rounded-3xl w-full max-w-sm p-6 ${glassPanel} border-white/20 shadow-2xl`} onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-5 border-b border-white/10 pb-3">
+              <h2 className="font-bold text-lg text-indigo-300">📊 Rincian Total Bulanan</h2>
+              <button onClick={() => setIsSummaryModalOpen(false)} className="opacity-70 hover:opacity-100 text-xl">×</button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="bg-black/20 p-4 rounded-xl border border-white/5 border-l-4 border-l-emerald-500">
+                <p className="text-xs opacity-70 font-bold uppercase mb-1">Total Income Kotor</p>
+                {/* break-words memastikan angka turun ke bawah jika terlalu panjang, bukan terpotong */}
+                <p className="text-2xl font-black text-emerald-400 break-words">
+                  {isNominalHidden ? "Rp •••••••" : `Rp ${totalBulanRp.toLocaleString("id-ID")}`}
+                </p>
+              </div>
+              
+              <div className="bg-black/20 p-4 rounded-xl border border-white/5 border-l-4 border-l-red-500">
+                <p className="text-xs opacity-70 font-bold uppercase mb-1">Total Pengeluaran</p>
+                <p className="text-2xl font-black text-red-400 break-words">
+                  {isNominalHidden ? "Rp •••••••" : `Rp ${totalPengeluaranBulanRp.toLocaleString("id-ID")}`}
+                </p>
+              </div>
+
+              <div className="bg-black/20 p-4 rounded-xl border border-white/5 border-l-4 border-l-blue-500">
+                <p className="text-xs opacity-70 font-bold uppercase mb-1">Laba Bersih Toko</p>
+                <p className={`text-2xl font-black break-words ${labaBersih >= 0 ? 'text-blue-400' : 'text-red-400'}`}>
+                  {isNominalHidden ? "Rp •••••••" : `Rp ${labaBersih.toLocaleString("id-ID")}`}
+                </p>
+              </div>
+            </div>
+            
+            <button onClick={() => setIsSummaryModalOpen(false)} className="w-full mt-6 py-3 bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl font-bold transition-all">Tutup Rincian</button>
+          </div>
+        </div>
+      )}
+
             {/* AREA GRID TANGGAL KALENDER */}
             <div className="flex-1 overflow-y-auto pb-4 pr-2 scroll-smooth">
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-4">
                 {calendarCards.map(day => (
-                  <div key={day.tanggal} onClick={() => handleKlikTanggal(day)} className={`p-4 rounded-2xl border transition-all ${day.qty > 0 ? 'bg-gradient-to-br from-indigo-900/40 to-blue-900/20 border-indigo-500/30 shadow-lg shadow-indigo-500/10 cursor-pointer hover:border-indigo-400' : `${glassPanel} opacity-60`}`}>
-                    <div className="flex justify-between items-start mb-3"><span className="text-xl font-black opacity-80">{day.tanggal}</span>{day.qty > 0 && <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded">Aktif</span>}</div>
+                  <div key={day.tanggal} onClick={() => handleKlikTanggal(day)} className={`p-4 rounded-2xl border transition-all ${day.qty > 0 || day.pengeluaran > 0 ? 'bg-gradient-to-br from-indigo-900/40 to-blue-900/20 border-indigo-500/30 shadow-lg shadow-indigo-500/10 cursor-pointer hover:border-indigo-400' : `${glassPanel} opacity-60`}`}>
+                    <div className="flex justify-between items-start mb-3">
+                      <span className="text-xl font-black opacity-80">{day.tanggal}</span>
+                      {(day.qty > 0 || day.pengeluaran > 0) && <span className="bg-indigo-500/20 text-indigo-300 text-[10px] font-bold px-2 py-0.5 rounded">Aktif</span>}
+                    </div>
                     <div className="space-y-1">
                       <p className="text-[11px] opacity-70">Trx: <span className="font-bold text-white text-xs">{day.qty}</span></p>
-                      <p className="text-sm font-black text-emerald-400">
-                        {isNominalHidden ? "Rp •••" : `Rp ${day.total.toLocaleString("id-ID")}`}
+                      
+                      {/* TAMPILAN LABA / RUGI BERSIH HARIAN */}
+                      <p className={`text-sm font-black ${day.labaRugi >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {isNominalHidden 
+                          ? "Rp •••" 
+                          : `${day.labaRugi < 0 ? '-' : ''}Rp ${Math.abs(day.labaRugi).toLocaleString("id-ID")}`
+                        }
                       </p>
                     </div>
                   </div>

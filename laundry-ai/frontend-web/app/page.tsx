@@ -745,7 +745,7 @@ export default function Dashboard() {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto p-6 lg:p-10 pt-20 md:pt-10 scroll-smooth z-10 w-full max-w-full">
+      <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-10 pt-5 md:pt-10 scroll-smooth z-10 w-full max-w-full relative">
         
         {/* MODUL PENGELUARAN */}
         {activeMenu === "Pengeluaran" ? (
@@ -1094,7 +1094,7 @@ export default function Dashboard() {
           </div>
         ) : activeMenu === "Database Customers" ? (
           <div className="max-w-7xl mx-auto overflow-x-auto">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 -mt-14 md:mt-0">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 md:mt-0">
               <div className="pl-14 md:pl-0"><h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Database 👥</h1><p className={`text-sm mt-1 ${textMuted}`}>Kelola profil pelanggan untuk fitur Autofill otomatis.</p></div>
               <button onClick={() => setIsCustomerModalOpen(true)} className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-5 py-3 rounded-xl text-sm font-bold shadow-lg shadow-purple-500/30 border border-white/20 transition-all active:scale-95 flex items-center gap-2">➕ <span>Customer Baru</span></button>
             </div>
@@ -1116,55 +1116,35 @@ export default function Dashboard() {
         ) : (
           <div className="max-w-7xl mx-auto flex flex-col h-full">
             
-            {/* HEADER DASHBOARD TUNGGAL & BERSIH (LAYOUT 2 BARIS, NAIK SEJAJAR HAMBURGER) */}
-            <div className="flex flex-col mb-4 pb-3 border-b border-white/10 gap-3 shrink-0 -mt-14 md:mt-0">
+            {/* HEADER DASHBOARD (LAYOUT SUPER RAPI & LEGA DI HP) */}
+            <div className="flex flex-col mb-4 pb-3 border-b border-white/10 gap-3 shrink-0">
               
-              {/* BARIS 1: Judul, Excel, & Filter Tanggal */}
-              <div className="flex justify-between items-center gap-2">
-                
-                {/* pl-14 md:pl-0 ditambahkan agar tulisan tidak tertutup tombol hamburger di HP */}
-                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight flex items-center pl-14 md:pl-0">
+              {/* BARIS 1: Judul Sejajar Hamburger */}
+              <div className="pl-14 md:pl-0 flex items-center min-h-[40px]">
+                <h1 className="text-3xl font-extrabold tracking-tight whitespace-nowrap flex items-center">
                   Dashboard ⚡ 
                 </h1>
-                
-                {/* KONTROL KANAN ATAS */}
-                <div className="flex items-center gap-1.5 sm:gap-3">
-                  {/* Tombol Excel */}
-                  <button 
-                    onClick={unduhExcel} 
-                    title="Unduh Excel"
-                    className="flex items-center justify-center gap-1.5 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-emerald-600/80 hover:bg-emerald-500 text-white font-bold transition-all text-[11px] sm:text-xs"
-                  >
-                    <span>📊</span>
-                    <span className="hidden md:inline">Excel</span>
-                  </button>
-
-                  {/* Filter Tanggal (DIPERLEBAR) */}
-                  <div className={`flex items-center px-1.5 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-black/20 border border-white/10 shadow-inner`}>
-                    <span className="text-[11px] sm:text-xs mr-1">📅</span>
-                    <input 
-                      type="date" 
-                      value={filterTanggal} 
-                      onChange={(e) => setFilterTanggal(e.target.value)} 
-                      // Lebar diperluas dari w-[85px] menjadi w-[100px]
-                      className="text-[10px] sm:text-xs font-bold outline-none bg-transparent cursor-pointer w-[100px] sm:w-auto" 
-                      style={{ colorScheme: isDarkMode ? 'dark' : 'light' }} 
-                    />
-                    {filterTanggal && (
-                      <button onClick={() => setFilterTanggal("")} className="text-red-400 hover:text-red-500 ml-1 sm:ml-2 text-[10px] sm:text-xs font-bold">✕</button>
-                    )}
-                  </div>
-                </div>
               </div>
 
-              {/* BARIS 2: Tombol Pesanan Baru (Lebar Penuh di HP, Kanan di Laptop) */}
-              <div className="flex justify-end">
-                <button 
-                  onClick={() => setIsModalOpen(true)} 
-                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-all text-sm shadow-lg shadow-indigo-500/30 whitespace-nowrap"
-                >
-                  <span className="text-base">➕</span>
-                  <span>Pesanan Baru</span>
+              {/* BARIS 2: Semua Kontrol Tombol */}
+              <div className="flex justify-between items-center gap-2">
+                {/* KIRI: Excel & Filter */}
+                <div className="flex items-center gap-1.5 sm:gap-3">
+                  <button onClick={unduhExcel} title="Unduh Excel" className="flex items-center justify-center gap-1.5 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-emerald-600/80 hover:bg-emerald-500 text-white font-bold transition-all text-[11px] sm:text-xs">
+                    <span>📊</span><span className="hidden md:inline">Excel</span>
+                  </button>
+
+                  <div className={`flex items-center px-1.5 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-black/20 border border-white/10 shadow-inner`}>
+                    <span className="text-[11px] sm:text-xs mr-1">📅</span>
+                    {/* Lebar filter diperluas */}
+                    <input type="date" value={filterTanggal} onChange={(e) => setFilterTanggal(e.target.value)} className="text-[10px] sm:text-xs font-bold outline-none bg-transparent cursor-pointer w-[110px] sm:w-auto" style={{ colorScheme: isDarkMode ? 'dark' : 'light' }} />
+                    {filterTanggal && <button onClick={() => setFilterTanggal("")} className="text-red-400 hover:text-red-500 ml-1 sm:ml-2 text-[10px] sm:text-xs font-bold">✕</button>}
+                  </div>
+                </div>
+
+                {/* KANAN: Pesanan Baru */}
+                <button onClick={() => setIsModalOpen(true)} className="flex items-center justify-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-all text-xs sm:text-sm shadow-lg shadow-indigo-500/30 whitespace-nowrap">
+                  <span className="text-sm sm:text-base">➕</span><span>Pesanan Baru</span>
                 </button>
               </div>
             </div>

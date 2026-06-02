@@ -70,6 +70,7 @@ export default function Dashboard() {
   const [isInventoryModalOpen, setIsInventoryModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [inputKodeToko, setInputKodeToko] = useState("");
+  const [kasirId, setKasirId] = useState<string | null>(null);
   const [filterTanggalInventory, setFilterTanggalInventory] = useState<string>("");
   const [selectedDateDetails, setSelectedDateDetails] = useState<any>(null);
   const [inputPin, setInputPin] = useState("");
@@ -324,6 +325,38 @@ export default function Dashboard() {
     cekKeamanan();
   }, [router]);
 
+  // ==========================================
+  // FITUR AUTO-KICK (FORCE LOGOUT) JIKA DIPECAT
+  // ==========================================
+  useEffect(() => {
+    const kickListener = supabase.channel('radar-pemecatan')
+      .on(
+        'postgres_changes', 
+        { event: 'DELETE', schema: 'public', table: 'user_profiles' }, 
+        async (payload) => {
+          const { data: { session } } = await supabase.auth.getSession();
+          
+          // Jika ID yang dicabut oleh Owner sama dengan ID orang yang sedang memegang HP ini
+          if (session && payload.old && payload.old.id === session.user.id) {
+            alert("⚠️ AKSES DICABUT: Anda telah dikeluarkan dari Toko oleh Owner.");
+            
+            // Hapus semua ingatan browser dan tendang ke halaman login
+            sessionStorage.removeItem("laundro_store_id");
+            sessionStorage.removeItem("laundro_secure_unlocked");
+            localStorage.removeItem("laundro_active_menu");
+            await supabase.auth.signOut();
+            
+            window.location.href = "/login"; // Force Redirect
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(kickListener);
+    };
+  }, []);
+
   async function ambilData() {
     // 1. Ambil ID Toko dari ingatan browser saat ini
     const storeId = sessionStorage.getItem("laundro_store_id");
@@ -410,6 +443,33 @@ export default function Dashboard() {
   };
 
   // ==========================================
+  // FUNGSI MANAJEMEN PEGAWAI (KHUSUS OWNER)
+  // ==========================================
+  async function bukaPengaturan() {
+    setIsSettingsOpen(true);
+    if (isOwnerMode) {
+      // Saat owner membuka pengaturan, sistem akan mengecek apakah ada kasir di tokonya
+      const storeId = sessionStorage.getItem("laundro_store_id");
+      const { data } = await supabase.from("user_profiles").select("id").eq("store_id", storeId).eq("role", "kasir").maybeSingle();
+      setKasirId(data ? data.id : null);
+    }
+  }
+
+  async function handlePecatKasir() {
+    const konfirmasi = confirm("⚠️ PERINGATAN: Yakin ingin mencabut akses kasir saat ini? Pegawai tersebut akan langsung dikeluarkan dari toko Anda.");
+    if (!konfirmasi || !kasirId) return;
+
+    try {
+      // Hapus profil kasir. Saat dia login lagi, dia akan dianggap orang baru dan mendapat toko kosong
+      await supabase.from("user_profiles").delete().eq("id", kasirId);
+      alert("✅ Akses pegawai berhasil dicabut. Slot kasir sekarang kosong dan siap digunakan pegawai baru.");
+      setKasirId(null);
+    } catch (err: any) {
+      alert("Gagal mencabut akses: " + err.message);
+    }
+  }
+
+  // ==========================================
   // FUNGSI GABUNG TOKO (UNTUK KASIR)
   // ==========================================
   async function handleGabungToko(e: React.FormEvent) {
@@ -453,6 +513,7 @@ export default function Dashboard() {
     // HAPUS INGATAN PIN DARI BROWSER
     sessionStorage.removeItem("laundro_secure_unlocked"); 
     localStorage.removeItem("laundro_active_menu");
+    sessionStorage.removeItem("laundro_store_id");
 
     await supabase.auth.signOut(); 
     router.push("/login");
@@ -851,7 +912,7 @@ export default function Dashboard() {
           </div>
           {/* MENU PENGATURAN TOKO */}
             <button
-              onClick={() => setIsSettingsOpen(true)}
+              onClick={bukaPengaturan}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all mb-2 text-white/70 hover:bg-white/10 hover:text-white"
             >
               <span className="text-xl">⚙️</span>
@@ -1746,59 +1807,105 @@ export default function Dashboard() {
       {/* MODAL PENGATURAN TOKO */}
       {isSettingsOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex justify-center items-center z-[100] p-4">
-          <div className="bg-slate-900 border border-white/10 p-6 sm:p-8 rounded-3xl w-full max-w-md shadow-2xl relative">
+          <div className="bg-slate-900 border border-white/10 p-6 sm:p-8 rounded-3xl w-full max-w-md shadow-2xl relative flex flex-col max-h-[90vh]">
             <button onClick={() => setIsSettingsOpen(false)} className="absolute top-4 right-4 text-white/50 hover:text-white text-2xl font-bold transition-all">✕</button>
             <h2 className="text-2xl font-extrabold text-white mb-6 flex items-center gap-2">⚙️ Pengaturan Toko</h2>
 
-            {isOwnerMode ? (
-              // TAMPILAN JIKA OWNER
-              <div className="bg-white/5 p-5 rounded-2xl border border-white/10 text-center">
-                <p className="text-sm text-white/70 mb-3">Kode Rahasia Toko Anda:</p>
-                
-                {/* KODE DENGAN TOMBOL SALIN */}
-                <div className="flex flex-col gap-3">
-                  <code className="block bg-black/50 text-emerald-400 p-3 rounded-xl font-mono text-sm break-all border border-emerald-500/30">
-                    {sessionStorage.getItem("laundro_store_id")}
-                  </code>
+            <div className="overflow-y-auto pr-1 custom-scrollbar">
+              {isOwnerMode ? (
+                // --- TAMPILAN KHUSUS OWNER ---
+                <div className="space-y-4">
                   
-                  <button 
-                    onClick={() => {
-                      const kode = sessionStorage.getItem("laundro_store_id");
-                      if (kode) {
-                        navigator.clipboard.writeText(kode);
-                        alert("✅ Kode berhasil disalin ke clipboard!");
-                      }
-                    }}
-                    className="flex items-center justify-center gap-2 w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm transition-all"
-                  >
-                    <span>📋</span> Salin Kode Toko
+                  {/* KOTAK 1: KODE TOKO */}
+                  <div className="bg-white/5 p-5 rounded-2xl border border-white/10 text-center">
+                    <p className="text-sm text-white/70 mb-3">Kode Rahasia Toko Anda:</p>
+                    <div className="flex flex-col gap-3">
+                      <code className="block bg-black/50 text-emerald-400 p-3 rounded-xl font-mono text-sm break-all border border-emerald-500/30">
+                        {sessionStorage.getItem("laundro_store_id") || "Memuat kode..."}
+                      </code>
+                      <button 
+                        onClick={() => {
+                          const kode = sessionStorage.getItem("laundro_store_id");
+                          if (kode) {
+                            navigator.clipboard.writeText(kode);
+                            alert("✅ Kode berhasil disalin!");
+                          }
+                        }}
+                        className="flex items-center justify-center gap-2 w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm transition-all"
+                      >
+                        <span>📋</span> Salin Kode Toko
+                      </button>
+                    </div>
+                    <p className="text-xs text-white/50 mt-4">Berikan kode ini ke pegawai Anda.</p>
+                  </div>
+
+                  {/* KOTAK 2: SLOT PEGAWAI */}
+                  <div className="bg-black/30 p-4 rounded-xl border border-white/10 text-left">
+                    <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">👥 Slot Pegawai (Kasir)</h3>
+                    {kasirId ? (
+                      <div className="flex items-center justify-between bg-white/5 p-3 rounded-lg border border-white/5">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400">🧑‍💻</div>
+                          <div>
+                            <p className="text-sm font-bold text-white">Kasir Aktif</p>
+                            <p className="text-[10px] text-emerald-400">Terhubung</p>
+                          </div>
+                        </div>
+                        <button onClick={handlePecatKasir} className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/40 text-red-400 hover:text-red-300 text-xs font-bold rounded-lg transition-all border border-red-500/30">
+                          Cabut Akses
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-4 text-center">
+                        <span className="text-2xl mb-2 opacity-50">🪑</span>
+                        <p className="text-xs text-white/50 mt-2">Slot kasir masih kosong.<br/>Bagikan kode di atas ke pegawai Anda.</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* KOTAK 3 (SOLUSI BUG): FORM GABUNG UNTUK OWNER TOKO KOSONG */}
+                  <div className="bg-blue-900/20 p-4 rounded-xl border border-blue-500/20 text-left">
+                    <h3 className="text-sm font-bold text-blue-300 mb-2">🔄 Gabung ke Cabang Lain</h3>
+                    <p className="text-[10px] text-blue-200/70 mb-3">Jika akun ini adalah Kasir, masukkan Kode Toko Utama di sini untuk bergabung kembali.</p>
+                    <form onSubmit={handleGabungToko} className="space-y-2">
+                      <input 
+                        type="text" 
+                        value={inputKodeToko} 
+                        onChange={(e) => setInputKodeToko(e.target.value)}
+                        placeholder="Tempel Kode Referal di sini..." 
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs font-mono"
+                        required
+                      />
+                      <button type="submit" className="w-full py-2 rounded-xl bg-blue-600/80 hover:bg-blue-500 text-white font-bold transition-all text-xs border border-white/10">
+                        🔗 Pindah & Jadi Kasir
+                      </button>
+                    </form>
+                  </div>
+                  
+                </div>
+              ) : (
+                // --- TAMPILAN KHUSUS KASIR (NORMAL) ---
+                <form onSubmit={handleGabungToko} className="space-y-4">
+                  <div className="bg-blue-500/10 border border-blue-500/30 p-4 rounded-xl mb-4">
+                    <p className="text-sm text-blue-200">Minta <b>Kode Toko</b> dari Owner Anda, lalu tempelkan di bawah ini.</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-white/70 mb-2 uppercase tracking-wider">Kode Referal Toko</label>
+                    <input 
+                      type="text" 
+                      value={inputKodeToko} 
+                      onChange={(e) => setInputKodeToko(e.target.value)}
+                      placeholder="Contoh: 123e4567..." 
+                      className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all font-mono text-sm"
+                      required
+                    />
+                  </div>
+                  <button type="submit" className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold shadow-lg shadow-blue-500/30 hover:opacity-90 transition-all">
+                    🔗 Gabung ke Toko
                   </button>
-                </div>
-                
-                <p className="text-xs text-white/50 mt-4">Berikan kode ini ke pegawai Anda. Minta mereka masuk ke menu ini lalu tempelkan kode di atas agar terhubung ke cabang Anda.</p>
-              </div>
-            ) : (
-              // TAMPILAN JIKA KASIR / AKUN BARU
-              <form onSubmit={handleGabungToko} className="space-y-4">
-                <div className="bg-blue-500/10 border border-blue-500/30 p-4 rounded-xl mb-4">
-                  <p className="text-sm text-blue-200">Minta <b>Kode Toko</b> dari Owner Anda, lalu tempelkan di bawah ini untuk menghubungkan akun.</p>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-white/70 mb-2 uppercase tracking-wider">Kode Referal Toko</label>
-                  <input 
-                    type="text" 
-                    value={inputKodeToko} 
-                    onChange={(e) => setInputKodeToko(e.target.value)}
-                    placeholder="Contoh: 123e4567-e89b-12d3..." 
-                    className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all font-mono text-sm"
-                    required
-                  />
-                </div>
-                <button type="submit" className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold shadow-lg shadow-blue-500/30 hover:opacity-90 transition-all">
-                  🔗 Gabung ke Toko
-                </button>
-              </form>
-            )}
+                </form>
+              )}
+            </div>
           </div>
         </div>
       )}

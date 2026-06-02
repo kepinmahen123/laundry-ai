@@ -288,7 +288,7 @@ export default function Dashboard() {
           const { data: newProfile } = await supabase.from("user_profiles").insert([{
             id: session.user.id,
             store_id: newStore.id,
-            role: "owner"
+            role: "kasir"
           }]).select().single();
           
           profile = newProfile;
@@ -1811,9 +1811,11 @@ export default function Dashboard() {
             <button onClick={() => setIsSettingsOpen(false)} className="absolute top-4 right-4 text-white/50 hover:text-white text-2xl font-bold transition-all">✕</button>
             <h2 className="text-2xl font-extrabold text-white mb-6 flex items-center gap-2">⚙️ Pengaturan Toko</h2>
 
-            <div className="overflow-y-auto pr-1 custom-scrollbar">
+            <div className="overflow-y-auto pr-1">
               {isOwnerMode ? (
-                // --- TAMPILAN KHUSUS OWNER ---
+                // ==========================================
+                // 👑 TAMPILAN MUTLAK KHUSUS OWNER
+                // ==========================================
                 <div className="space-y-4">
                   
                   {/* KOTAK 1: KODE TOKO */}
@@ -1862,29 +1864,12 @@ export default function Dashboard() {
                       </div>
                     )}
                   </div>
-
-                  {/* KOTAK 3 (SOLUSI BUG): FORM GABUNG UNTUK OWNER TOKO KOSONG */}
-                  <div className="bg-blue-900/20 p-4 rounded-xl border border-blue-500/20 text-left">
-                    <h3 className="text-sm font-bold text-blue-300 mb-2">🔄 Gabung ke Cabang Lain</h3>
-                    <p className="text-[10px] text-blue-200/70 mb-3">Jika akun ini adalah Kasir, masukkan Kode Toko Utama di sini untuk bergabung kembali.</p>
-                    <form onSubmit={handleGabungToko} className="space-y-2">
-                      <input 
-                        type="text" 
-                        value={inputKodeToko} 
-                        onChange={(e) => setInputKodeToko(e.target.value)}
-                        placeholder="Tempel Kode Referal di sini..." 
-                        className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs font-mono"
-                        required
-                      />
-                      <button type="submit" className="w-full py-2 rounded-xl bg-blue-600/80 hover:bg-blue-500 text-white font-bold transition-all text-xs border border-white/10">
-                        🔗 Pindah & Jadi Kasir
-                      </button>
-                    </form>
-                  </div>
                   
                 </div>
               ) : (
-                // --- TAMPILAN KHUSUS KASIR (NORMAL) ---
+                // ==========================================
+                // 🧑‍💻 TAMPILAN MUTLAK KHUSUS KASIR
+                // ==========================================
                 <form onSubmit={handleGabungToko} className="space-y-4">
                   <div className="bg-blue-500/10 border border-blue-500/30 p-4 rounded-xl mb-4">
                     <p className="text-sm text-blue-200">Minta <b>Kode Toko</b> dari Owner Anda, lalu tempelkan di bawah ini.</p>

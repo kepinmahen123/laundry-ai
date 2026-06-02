@@ -947,12 +947,26 @@ export default function Dashboard() {
               <span className="font-semibold tracking-wide">Pengaturan Toko</span>
             </button>
           <nav className="mt-4 px-4 space-y-2">
-            {['Dashboard', 'Database Customers', 'Tracking', 'Inventory', 'Calendar', 'Pengeluaran', 'Data Log'].map((menu) => {
+            {/* LOGIKA STRIP SILABUS MENU BERDASARKAN ROLE */}
+            {(isOwnerMode 
+              ? ['Dashboard', 'Database Customers', 'Tracking', 'Inventory', 'Calendar', 'Pengeluaran', 'Data Log']
+              : ['Dashboard', 'Database Customers', 'Pengeluaran']
+            ).map((menu) => {
               const isLocked = !isSecureUnlocked && ["Calendar", "Pengeluaran", "Data Log"].includes(menu);
               return (
-                <button key={menu} onClick={() => handleMenuClick(menu)} className={`w-full flex items-center justify-between px-4 py-3 rounded-xl font-semibold transition-all duration-300 ${activeMenu === menu ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30 border border-white/20" : `${isDarkMode ? 'text-gray-400 hover:bg-white/10' : 'text-gray-600 hover:bg-white/40'}`}`}>
+                <button 
+                  key={menu} 
+                  onClick={() => handleMenuClick(menu)} 
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl font-semibold transition-all duration-300 ${activeMenu === menu ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30 border border-white/20" : `${isDarkMode ? 'text-gray-400 hover:bg-white/10' : 'text-gray-600 hover:bg-white/40'}`}`}
+                >
                   <div className="flex items-center gap-3">
-                    {menu === 'Dashboard' && "📊"} {menu === 'Tracking' && "📍"} {menu === 'Database Customers' && "👥"} {menu === 'Calendar' && "📅"} {menu === 'Inventory' && "📦"} {menu === 'Pengeluaran' && "💸"} {menu === 'Data Log' && "🛡️"}
+                    {menu === 'Dashboard' && "📊"} 
+                    {menu === 'Tracking' && "📍"} 
+                    {menu === 'Database Customers' && "👥"} 
+                    {menu === 'Calendar' && "📅"} 
+                    {menu === 'Inventory' && "📦"} 
+                    {menu === 'Pengeluaran' && "💸"} 
+                    {menu === 'Data Log' && "🛡️"}
                     <span className="text-sm truncate max-w-[120px]">
                       {menu === 'Calendar' ? 'Pemasukan' : menu === 'Inventory' ? 'Stok Gudang' : menu}
                     </span>
@@ -970,7 +984,15 @@ export default function Dashboard() {
       </aside>
 
       <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-10 pt-5 md:pt-10 scroll-smooth z-10 w-full max-w-full relative">
-        
+        {/* DOUBLE LOCK GUARDRAIL: Jika Kasir memaksa masuk ke menu Owner, tendang balik ke Dashboard */}
+        {!isOwnerMode && ["Tracking", "Inventory", "Calendar", "Data Log"].includes(activeMenu) && (
+          <div className="text-center p-10">
+            <h2 className="text-xl font-black text-red-400 mb-2">🛑 AKSES DITOLAK</h2>
+            <p className="text-sm opacity-60 mb-4">Halaman ini hanya dapat diakses oleh Owner Toko.</p>
+            <button onClick={() => setActiveMenu("Dashboard")} className="px-4 py-2 bg-blue-600 rounded-xl text-xs font-bold text-white">Kembali ke Dashboard</button>
+          </div>
+        )}
+
         {/* MODUL PENGELUARAN */}
         {activeMenu === "Pengeluaran" ? (
           <div className="max-w-7xl mx-auto flex flex-col h-full">
@@ -1026,24 +1048,24 @@ export default function Dashboard() {
                 </form>
               </div>
               <div className={`md:col-span-2 p-6 rounded-3xl ${glassPanel} flex flex-col`}>
-  {/* HEADER & FILTER TANGGAL */}
-  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 border-b border-white/10 pb-3 gap-3">
-    <h3 className="font-bold text-lg">Riwayat Pengeluaran</h3>
-    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl bg-black/20 border border-white/10 shadow-inner`}>
-      <span className="text-xs font-bold opacity-60">📅 Filter:</span>
-      <input type="date" value={filterTanggalPengeluaran} onChange={(e) => setFilterTanggalPengeluaran(e.target.value)} className="text-xs font-bold outline-none bg-transparent cursor-pointer" style={{ colorScheme: isDarkMode ? 'dark' : 'light' }} />
-      {filterTanggalPengeluaran && <button onClick={() => setFilterTanggalPengeluaran("")} className="text-red-400 hover:text-red-500 ml-1 text-xs font-bold transition-colors">✕</button>}
-    </div>
-  </div>
+            {/* HEADER & FILTER TANGGAL */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 border-b border-white/10 pb-3 gap-3">
+              <h3 className="font-bold text-lg">Riwayat Pengeluaran</h3>
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl bg-black/20 border border-white/10 shadow-inner`}>
+                <span className="text-xs font-bold opacity-60">📅 Filter:</span>
+                <input type="date" value={filterTanggalPengeluaran} onChange={(e) => setFilterTanggalPengeluaran(e.target.value)} className="text-xs font-bold outline-none bg-transparent cursor-pointer" style={{ colorScheme: isDarkMode ? 'dark' : 'light' }} />
+                {filterTanggalPengeluaran && <button onClick={() => setFilterTanggalPengeluaran("")} className="text-red-400 hover:text-red-500 ml-1 text-xs font-bold transition-colors">✕</button>}
+              </div>
+            </div>
 
-  {/* TABEL DATA */}
-  <div className="overflow-x-auto max-h-[400px]">
-    <table className="w-full text-left text-sm">
-      <thead className={tableHeaderGlass}>
-        <tr><th className="p-3">Tanggal & Waktu</th><th className="p-3">Kategori</th><th className="p-3">Deskripsi</th><th className="p-3 text-right">Nominal</th></tr>
-      </thead>
-      <tbody className={`divide-y ${isDarkMode ? 'divide-white/5' : 'divide-black/5'}`}>
-        {pengeluaranTersaring.map(ex => (
+            {/* TABEL DATA */}
+            <div className="overflow-x-auto max-h-[400px]">
+              <table className="w-full text-left text-sm">
+                <thead className={tableHeaderGlass}>
+                  <tr><th className="p-3">Tanggal & Waktu</th><th className="p-3">Kategori</th><th className="p-3">Deskripsi</th><th className="p-3 text-right">Nominal</th></tr>
+                </thead>
+                <tbody className={`divide-y ${isDarkMode ? 'divide-white/5' : 'divide-black/5'}`}>
+                  {pengeluaranTersaring.map(ex => (
                         <tr key={ex.id} className={rowHover}>
                           <td className="p-3 opacity-70 text-[11px] whitespace-nowrap">
                             {new Date(ex.created_at).toLocaleString('id-ID', {
@@ -1187,6 +1209,8 @@ export default function Dashboard() {
           </div>
         ) : activeMenu === "Calendar" ? (
           <div className="max-w-7xl mx-auto flex flex-col h-full">
+            
+            {/* 1. HEADER KALENDER */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 shrink-0 md:mt-0">
               <div className="pl-14 md:pl-0">
                 <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight flex items-center gap-2 sm:gap-3">
@@ -1204,8 +1228,9 @@ export default function Dashboard() {
                 <input type="number" value={calendarYear} onChange={e => setCalendarYear(Number(e.target.value))} className={`px-4 py-2 rounded-xl font-bold outline-none w-24 ${glassPanel}`} />
               </div>
             </div>
-            {/* KARTU RINGKASAN KEUNTUNGAN BERSIH (BISA DIKLIK) */}
-            <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-4">
+
+            {/* 2. KARTU RINGKASAN ATAS */}
+            <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-4 shrink-0">
               <div onClick={() => setIsSummaryModalOpen(true)} className={`cursor-pointer hover:bg-white/5 active:scale-95 transition-all p-3 sm:p-5 rounded-xl sm:rounded-2xl flex flex-col justify-center ${glassPanel} border-t-4 sm:border-t-0 sm:border-l-4 border-emerald-500`}>
                 <p className="text-[9px] sm:text-xs font-bold uppercase tracking-wider opacity-70 truncate">Pemasukan</p>
                 <p className="text-[13px] sm:text-2xl font-black mt-1 text-emerald-400 truncate">
@@ -1226,45 +1251,44 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* MODAL POPUP RINCIAN TOTAL BULANAN (NOMINAL UTUH) */}
-      {isSummaryModalOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] p-4" onClick={() => setIsSummaryModalOpen(false)}>
-          <div className={`rounded-3xl w-full max-w-sm p-6 ${glassPanel} border-white/20 shadow-2xl`} onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-5 border-b border-white/10 pb-3">
-              <h2 className="font-bold text-lg text-indigo-300">📊 Rincian Total Bulanan</h2>
-              <button onClick={() => setIsSummaryModalOpen(false)} className="opacity-70 hover:opacity-100 text-xl">×</button>
-            </div>
-            
-            <div className="space-y-4">
-              <div className="bg-black/20 p-4 rounded-xl border border-white/5 border-l-4 border-l-emerald-500">
-                <p className="text-xs opacity-70 font-bold uppercase mb-1">Total Income Kotor</p>
-                {/* break-words memastikan angka turun ke bawah jika terlalu panjang, bukan terpotong */}
-                <p className="text-2xl font-black text-emerald-400 break-words">
-                  {isNominalHidden ? "Rp •••••••" : `Rp ${totalBulanRp.toLocaleString("id-ID")}`}
-                </p>
-              </div>
-              
-              <div className="bg-black/20 p-4 rounded-xl border border-white/5 border-l-4 border-l-red-500">
-                <p className="text-xs opacity-70 font-bold uppercase mb-1">Total Pengeluaran</p>
-                <p className="text-2xl font-black text-red-400 break-words">
-                  {isNominalHidden ? "Rp •••••••" : `Rp ${totalPengeluaranBulanRp.toLocaleString("id-ID")}`}
-                </p>
-              </div>
+            {/* MODAL POPUP RINCIAN TOTAL BULANAN */}
+            {isSummaryModalOpen && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] p-4" onClick={() => setIsSummaryModalOpen(false)}>
+                <div className={`rounded-3xl w-full max-w-sm p-6 ${glassPanel} border-white/20 shadow-2xl`} onClick={(e) => e.stopPropagation()}>
+                  <div className="flex justify-between items-center mb-5 border-b border-white/10 pb-3">
+                    <h2 className="font-bold text-lg text-indigo-300">📊 Rincian Total Bulanan</h2>
+                    <button onClick={() => setIsSummaryModalOpen(false)} className="opacity-70 hover:opacity-100 text-xl">×</button>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <div className="bg-black/20 p-4 rounded-xl border border-white/5 border-l-4 border-l-emerald-500">
+                      <p className="text-xs opacity-70 font-bold uppercase mb-1">Total Income Kotor</p>
+                      <p className="text-2xl font-black text-emerald-400 break-words">
+                        {isNominalHidden ? "Rp •••••••" : `Rp ${totalBulanRp.toLocaleString("id-ID")}`}
+                      </p>
+                    </div>
+                    
+                    <div className="bg-black/20 p-4 rounded-xl border border-white/5 border-l-4 border-l-red-500">
+                      <p className="text-xs opacity-70 font-bold uppercase mb-1">Total Pengeluaran</p>
+                      <p className="text-2xl font-black text-red-400 break-words">
+                        {isNominalHidden ? "Rp •••••••" : `Rp ${totalPengeluaranBulanRp.toLocaleString("id-ID")}`}
+                      </p>
+                    </div>
 
-              <div className="bg-black/20 p-4 rounded-xl border border-white/5 border-l-4 border-l-blue-500">
-                <p className="text-xs opacity-70 font-bold uppercase mb-1">Laba Bersih Toko</p>
-                <p className={`text-2xl font-black break-words ${labaBersih >= 0 ? 'text-blue-400' : 'text-red-400'}`}>
-                  {isNominalHidden ? "Rp •••••••" : `Rp ${labaBersih.toLocaleString("id-ID")}`}
-                </p>
+                    <div className="bg-black/20 p-4 rounded-xl border border-white/5 border-l-4 border-l-blue-500">
+                      <p className="text-xs opacity-70 font-bold uppercase mb-1">Laba Bersih Toko</p>
+                      <p className={`text-2xl font-black break-words ${labaBersih >= 0 ? 'text-blue-400' : 'text-red-400'}`}>
+                        {isNominalHidden ? "Rp •••••••" : `Rp ${labaBersih.toLocaleString("id-ID")}`}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <button onClick={() => setIsSummaryModalOpen(false)} className="w-full mt-6 py-3 bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl font-bold transition-all">Tutup Rincian</button>
+                </div>
               </div>
-            </div>
-            
-            <button onClick={() => setIsSummaryModalOpen(false)} className="w-full mt-6 py-3 bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl font-bold transition-all">Tutup Rincian</button>
-          </div>
-        </div>
-      )}
+            )}
 
-            {/* AREA GRID TANGGAL KALENDER */}
+            {/* 3. AREA GRID TANGGAL KALENDER */}
             <div className="flex-1 overflow-y-auto pb-4 pr-2 scroll-smooth">
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-4">
                 {calendarCards.map(day => (
@@ -1275,8 +1299,6 @@ export default function Dashboard() {
                     </div>
                     <div className="space-y-1">
                       <p className="text-[11px] opacity-70">Trx: <span className="font-bold text-white text-xs">{day.qty}</span></p>
-                      
-                      {/* TAMPILAN LABA / RUGI BERSIH HARIAN */}
                       <p className={`text-sm font-black ${day.labaRugi >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                         {isNominalHidden 
                           ? "Rp •••" 
@@ -1288,7 +1310,99 @@ export default function Dashboard() {
                 ))}
               </div>
             </div>
+
+            {/* 4. PANEL GRAFIK ANALISIS BAWAH */}
+            <div className={`p-5 rounded-2xl mt-4 ${glassPanel} grid grid-cols-1 md:grid-cols-3 gap-6 items-center shrink-0 border-t border-white/10`}>
+              
+              {/* KOLOM 1: DIAGRAM LINGKARAN */}
+              <div className="flex flex-col items-center justify-center text-center">
+                <p className="text-xs font-bold uppercase tracking-wider mb-3 opacity-70">Alokasi Finansial</p>
+                {(() => {
+                  const safePemasukan = totalBulanRp || 0;
+                  const safePengeluaran = totalPengeluaranBulanRp || 0;
+                  let pengeluaranPersen = safePemasukan > 0 ? Math.round((safePengeluaran / safePemasukan) * 100) : 0;
+                  let labaPersen = 100 - pengeluaranPersen;
+                  if (labaBersih < 0) { pengeluaranPersen = 100; labaPersen = 0; }
+
+                  return (
+                    <div className="relative w-36 h-36 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-105 duration-300"
+                         style={{
+                           background: safePemasukan === 0 && safePengeluaran === 0
+                             ? '#4B5563'
+                             : `conic-gradient(#10B981 0% ${labaPersen}%, #EF4444 ${labaPersen}% 100%)`
+                         }}>
+                      <div className={`w-28 h-28 rounded-full ${isDarkMode ? 'bg-slate-900' : 'bg-white'} flex flex-col items-center justify-center p-2 shadow-inner`}>
+                        <span className="text-[10px] font-bold opacity-60 uppercase">Margin Laba</span>
+                        <span className={`text-xl font-black ${labaBersih >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                          {safePemasukan > 0 ? `${Math.round((labaBersih / safePemasukan) * 100)}%` : '0%'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* KOLOM 2 & 3: PROGRESS METRICS */}
+              <div className="md:col-span-2 space-y-3.5 w-full">
+                <h4 className="text-sm font-bold text-indigo-300 hidden md:block">📊 Metrik Efisiensi Operasional</h4>
+                
+                {/* BAR 1: PEMASUKAN */}
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="flex items-center gap-2 font-semibold text-emerald-400"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Pemasukan (Gross)</span>
+                    <span className="font-mono font-bold">{totalBulanRp > 0 ? '100%' : '0%'}</span>
+                  </div>
+                  <div className="w-full bg-black/30 rounded-full h-2 border border-white/5 overflow-hidden">
+                    <div className="bg-emerald-500 h-full rounded-full transition-all duration-500" style={{ width: totalBulanRp > 0 ? '100%' : '0%' }}></div>
+                  </div>
+                </div>
+
+                {/* BAR 2: PENGELUARAN */}
+                <div className="space-y-1">
+                  {(() => {
+                    const persenPgl = totalBulanRp > 0 ? Math.round((totalPengeluaranBulanRp / totalBulanRp) * 100) : 0;
+                    return (
+                      <>
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="flex items-center gap-2 font-semibold text-red-400"><span className="w-2.5 h-2.5 rounded-full bg-red-500"></span> Rasio Pengeluaran</span>
+                          <span className="font-mono font-bold text-red-400">{persenPgl}%</span>
+                        </div>
+                        <div className="w-full bg-black/30 rounded-full h-2 border border-white/5 overflow-hidden">
+                          <div className="bg-red-500 h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, persenPgl)}%` }}></div>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+
+                {/* BAR 3: LABA BERSIH */}
+                <div className="space-y-1">
+                  {(() => {
+                    const persenLaba = totalBulanRp > 0 ? Math.round((labaBersih / totalBulanRp) * 100) : 0;
+                    return (
+                      <>
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="flex items-center gap-2 font-semibold text-blue-400"><span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span> Profitabilitas</span>
+                          <span className={`font-mono font-bold ${persenLaba >= 0 ? 'text-blue-400' : 'text-yellow-400'}`}>{persenLaba}%</span>
+                        </div>
+                        <div className="w-full bg-black/30 rounded-full h-2 border border-white/5 overflow-hidden">
+                          <div className={`${labaBersih >= 0 ? 'bg-blue-500' : 'bg-yellow-500'} h-full rounded-full transition-all duration-500`} style={{ width: `${labaBersih >= 0 ? Math.max(0, persenLaba) : 0}%` }}></div>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+
+                <div className="text-[10px] bg-black/20 p-2 rounded-lg border border-white/5 text-center md:text-left mt-2">
+                  {totalBulanRp === 0 ? <span className="text-gray-400">💤 Belum ada aktivitas tercatat bulan ini.</span>
+                  : labaBersih < 0 ? <span className="text-red-400 font-bold">⚠️ STATUS DEFISIT: Pengeluaran melewati omset!</span>
+                  : (totalPengeluaranBulanRp / totalBulanRp) * 100 > 50 ? <span className="text-yellow-400 font-semibold">⚠️ PERINGATAN: Pengeluaran melebihi 50% omset.</span>
+                  : <span className="text-emerald-400 font-semibold">🎉 SEHAT: Profit bersih di zona aman. Pertahankan!</span>}
+                </div>
+              </div>
+            </div>
           </div>
+        
         ) : activeMenu === "Tracking" ? (
           <div className="max-w-7xl mx-auto h-full flex flex-col">
              <div className="mb-6 md:mt-0 pl-14 md:pl-0"><h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Tracking Armada 📍</h1><p className={`text-sm mt-1 ${textMuted}`}>Pantau pergerakan armada pengiriman secara real-time.</p></div>

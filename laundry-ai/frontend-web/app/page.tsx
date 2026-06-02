@@ -68,6 +68,8 @@ export default function Dashboard() {
   const [isNominalHidden, setIsNominalHidden] = useState(false);
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
   const [isInventoryModalOpen, setIsInventoryModalOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [inputKodeToko, setInputKodeToko] = useState("");
   const [filterTanggalInventory, setFilterTanggalInventory] = useState<string>("");
   const [selectedDateDetails, setSelectedDateDetails] = useState<any>(null);
   const [inputPin, setInputPin] = useState("");
@@ -157,7 +159,9 @@ export default function Dashboard() {
   // FUNGSI PENCATATAN AKTIVITAS (AUDIT LOG)
   // ==========================================
   const catatLog = async (action: string, details: string) => {
-    try { await supabase.from("audit_logs").insert([{ action, details }]); } catch (error) { console.error("Gagal mencatat log", error); }
+    const storeId = sessionStorage.getItem("laundro_store_id");
+    if (!storeId) return;
+    try { await supabase.from("audit_logs").insert([{ store_id: storeId, action, details }]); } catch (error) { console.error("Gagal mencatat log", error); }
   };
 
   // ==========================================
@@ -260,47 +264,88 @@ export default function Dashboard() {
   useEffect(() => {
     async function cekKeamanan() {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) router.push("/login");
-      else { 
-        setSession(session); 
-        
-        // 1. Cek Mode Akun (GANTI EMAIL INI DENGAN EMAIL OWNER ANDA)
-        const emailOwner = "owner@email.com"; 
-        if (session.user.email === emailOwner) {
-          setIsOwnerMode(true);
-        } else {
-          setIsOwnerMode(false);
-        }
-
-        // 2. Cek Ingatan Browser (Apakah PIN sudah dimasukkan sebelumnya?)
-        const isPinUnlocked = sessionStorage.getItem("laundro_secure_unlocked");
-        if (isPinUnlocked === "true") {
-          setIsSecureUnlocked(true);
-        }
-
-        ambilData(); 
+      
+      // Jika tidak ada sesi login, tendang ke halaman login
+      if (!session) {
+        router.push("/login");
+        return;
       }
+
+      setSession(session);
+
+      // 1. Cek apakah Email ini sudah terdaftar di profil toko kita
+      let { data: profile } = await supabase.from("user_profiles").select("*").eq("id", session.user.id).single();
+
+      // 2. Jika Profil TIDAK DITEMUKAN (Artinya ini Akun/Email Baru)
+      if (!profile) {
+        // A. Buat Toko Baru secara otomatis (Contoh nama: "Toko budi")
+        const namaToko = `Toko ${session.user.email?.split('@')[0]}`;
+        const { data: newStore, error: storeError } = await supabase.from("stores").insert([{ name: namaToko }]).select().single();
+
+        if (newStore) {
+          // B. Daftarkan email ini sebagai "Owner" di toko yang baru dibuat
+          const { data: newProfile } = await supabase.from("user_profiles").insert([{
+            id: session.user.id,
+            store_id: newStore.id,
+            role: "owner"
+          }]).select().single();
+          
+          profile = newProfile;
+
+          // C. Buatkan rak Stok Gudang perdana (angka 0 semua) KHUSUS untuk toko ini
+          await supabase.from("inventory").insert([{ 
+            store_id: newStore.id, 
+            deterjen: 0, 
+            parfum: 0, 
+            plastik: 0 
+          }]);
+        } else {
+          console.error("Gagal membuat toko baru:", storeError);
+        }
+      }
+
+      // 3. Jika profil sudah ada/berhasil dibuat, simpan ID Toko-nya di memori browser
+      if (profile) {
+        sessionStorage.setItem("laundro_store_id", profile.store_id);
+        setIsOwnerMode(profile.role === "owner");
+      }
+
+      // 4. Cek Ingatan Browser (Apakah PIN keamanan sudah dimasukkan sebelumnya?)
+      const isPinUnlocked = sessionStorage.getItem("laundro_secure_unlocked");
+      if (isPinUnlocked === "true") {
+        setIsSecureUnlocked(true);
+      }
+
+      // 5. Tarik semua data dari database
+      ambilData(); 
       setLoading(false);
     }
+    
     cekKeamanan();
   }, [router]);
 
   async function ambilData() {
-    // Tarik Semua Data dari Supabase
-    const { data: ordersData } = await supabase.from("orders").select("*").order("id", { ascending: false });
+    // 1. Ambil ID Toko dari ingatan browser saat ini
+    const storeId = sessionStorage.getItem("laundro_store_id");
+    
+    // Jika belum ada ID Toko (belum selesai proses login), batalkan penarikan data
+    if (!storeId) return; 
+
+    // 2. Tarik Data KHUSUS UNTUK TOKO INI (.eq("store_id", storeId))
+    const { data: ordersData } = await supabase.from("orders").select("*").eq("store_id", storeId).order("id", { ascending: false });
     if (Array.isArray(ordersData)) setPesanan(ordersData);
     
-    const { data: customersData } = await supabase.from("customers").select("*").order("name", { ascending: true });
+    const { data: customersData } = await supabase.from("customers").select("*").eq("store_id", storeId).order("name", { ascending: true });
     if (Array.isArray(customersData)) setCustomers(customersData);
 
-    const { data: expData } = await supabase.from("expenses").select("*").order("id", { ascending: false });
+    const { data: expData } = await supabase.from("expenses").select("*").eq("store_id", storeId).order("id", { ascending: false });
     if (Array.isArray(expData)) setPengeluaran(expData);
 
-    const { data: logData } = await supabase.from("audit_logs").select("*").order("id", { ascending: false }).limit(300);
+    const { data: logData } = await supabase.from("audit_logs").select("*").eq("store_id", storeId).order("id", { ascending: false }).limit(300);
     if (Array.isArray(logData)) setAuditLogs(logData);
 
-    // Ambil Stok Terbaru Langsung dari Database Supabase
-    const { data: invData } = await supabase.from("inventory").select("*").eq("id", 1).maybeSingle();
+    // 3. Ambil Stok Gudang Khusus Toko Ini
+    const { data: invData } = await supabase.from("inventory").select("*").eq("store_id", storeId).maybeSingle();
     if (invData) {
       setInventory({ deterjen: invData.deterjen, parfum: invData.parfum, plastik: invData.plastik });
     }
@@ -363,6 +408,44 @@ export default function Dashboard() {
     link.click();
     document.body.removeChild(link);
   };
+
+  // ==========================================
+  // FUNGSI GABUNG TOKO (UNTUK KASIR)
+  // ==========================================
+  async function handleGabungToko(e: React.FormEvent) {
+    e.preventDefault();
+    if (!inputKodeToko) return;
+    
+    const konfirmasi = confirm("Apakah Anda yakin ingin bergabung ke Toko ini? Data toko Anda yang kosong saat ini akan ditinggalkan.");
+    if (!konfirmasi) return;
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      // 1. Cek apakah di toko tujuan sudah ada kasir lain (Maks 2 Akun)
+      const { data: cekAkun } = await supabase.from("user_profiles").select("id").eq("store_id", inputKodeToko);
+      if (cekAkun && cekAkun.length >= 2) {
+        alert("⚠️ Gagal: Toko ini sudah mencapai batas maksimal (2 Akun).");
+        return;
+      }
+
+      // 2. Jika aman, ubah role menjadi Kasir dan pindahkan ID Tokonya
+      const { error } = await supabase.from("user_profiles").update({ 
+        store_id: inputKodeToko, 
+        role: "kasir" 
+      }).eq("id", session.user.id);
+
+      if (error) throw new Error(error.message);
+
+      alert("✅ Berhasil bergabung sebagai Kasir! Sistem akan dimuat ulang.");
+      sessionStorage.setItem("laundro_store_id", inputKodeToko);
+      window.location.reload(); // Refresh otomatis agar data tersinkronisasi
+      
+    } catch (err: any) {
+      alert("Gagal bergabung: " + err.message);
+    }
+  }
 
   async function handleLogout() {
     catatLog("Logout", "Admin/Kasir keluar dari sistem.");
@@ -427,8 +510,12 @@ export default function Dashboard() {
       return;
     }
 
+    const storeId = sessionStorage.getItem("laundro_store_id");
+    if (!storeId) return;
+
     try {
       const { error } = await supabase.from("expenses").insert([{
+        store_id: storeId, // STEMPEL TOKO!
         kategori: formPengeluaran.kategori,
         deskripsi: formPengeluaran.deskripsi,
         nominal: Number(formPengeluaran.nominal),
@@ -441,7 +528,7 @@ export default function Dashboard() {
       const matchAngka = formPengeluaran.deskripsi.match(/\d+/);
       const qtyDitemukan = matchAngka ? parseInt(matchAngka[0], 10) : 0;
 
-      // UPDATE STOK LANGSUNG KE DATABASE SUPABASE JIKA KATEGORI RESTOCK
+      // UPDATE STOK LANGSUNG KE DATABASE SUPABASE KHUSUS TOKO INI
       if (qtyDitemukan > 0 && formPengeluaran.kategori.includes("Restock")) {
         let updatedInv = { ...inventory };
         if (formPengeluaran.kategori === "Restock Deterjen") {
@@ -455,7 +542,7 @@ export default function Dashboard() {
           infoRestockTelegram = `\n📦 *Stok Gudang Bertambah:* +${qtyDitemukan} Pcs Plastik`;
         }
         
-        await supabase.from("inventory").update(updatedInv).eq("id", 1);
+        await supabase.from("inventory").update(updatedInv).eq("store_id", storeId); // UPDATE BERDASARKAN STORE ID!
       }
       
       const pesanCaption = `💸 *PENGELUARAN BARU*\n\n📌 *Kategori:* ${formPengeluaran.kategori}\n📝 *Ket:* ${formPengeluaran.deskripsi}\n💰 *Nominal:* Rp ${Number(formPengeluaran.nominal).toLocaleString('id-ID')}${infoRestockTelegram}`;
@@ -474,7 +561,7 @@ export default function Dashboard() {
       setFormPengeluaran({ kategori: "Listrik (Token/Pasca)", deskripsi: "", nominal: "" });
       setFotoStruk(null);
       setPreviewStrukUrl(null);
-      ambilData(); // Akan otomatis menarik data inventaris terbaru dari Supabase
+      ambilData(); 
     } catch (err: any) { 
       alert("Gagal menyimpan pengeluaran: " + err.message); 
     }
@@ -486,22 +573,26 @@ export default function Dashboard() {
   async function handleTambahPesanan(e: React.FormEvent) {
     e.preventDefault();
     
-    // 1. BLOKIR JIKA NOMINAL MASIH Rp 0 (KODE BARU)
     if (formData.total_harga <= 0) {
-      alert("⚠️ Total tagihan tidak boleh Rp 0! Harap masukkan berat (KG) atau jumlah pakaian terlebih dahulu."); 
-      return;
+      alert("⚠️ Total tagihan tidak boleh Rp 0! Harap masukkan berat (KG) atau jumlah pakaian terlebih dahulu."); return;
     }
 
-    // 2. BLOKIR JIKA BELUM ADA FOTO BUKTI BAYAR (KODE LAMA)
     if (formData.status_pembayaran !== "Belum Bayar" && !paymentPhoto) {
       alert("⚠️ Harap unggah foto bukti transaksi pembayaran (Transfer/QRIS/Cash) terlebih dahulu!"); return;
     }
-    
     setIsSubmitting(true);
     
+    const storeId = sessionStorage.getItem("laundro_store_id");
+    if (!storeId) {
+       alert("Sistem gagal mendeteksi ID Toko. Silakan refresh halaman.");
+       setIsSubmitting(false);
+       return;
+    }
+
     try {
       const { data: newOrderData, error } = await supabase.from("orders").insert([
         { 
+          store_id: storeId, // STEMPEL TOKO!
           customer_name: formData.customer_name, 
           alamat_detail: formData.alamat_detail, 
           jarak_ke_toko_km: Number(formData.jarak_ke_toko_km), 
@@ -523,25 +614,24 @@ export default function Dashboard() {
       
       if (error) throw new Error(error.message);
 
-      // POTONG STOK SECARA PERMANEN DI SUPABASE KETIKA ADA PESANAN CUSTOMER
+      // POTONG STOK SECARA PERMANEN DI SUPABASE KHUSUS TOKO INI
       const berat = Number(formData.berat_pesanan_kg) || 1;
       const nDet = Math.max(0, inventory.deterjen - Math.round(berat * 50));
       const nPar = Math.max(0, inventory.parfum - Math.round(berat * 20));
       const nPlas = Math.max(0, inventory.plastik - 1);
       
-      await supabase.from("inventory").update({ deterjen: nDet, parfum: nPar, plastik: nPlas }).eq("id", 1);
+      await supabase.from("inventory").update({ deterjen: nDet, parfum: nPar, plastik: nPlas }).eq("store_id", storeId); // UPDATE BERDASARKAN STORE ID
 
       if (nDet < 1000 || nPar < 500 || nPlas < 10) {
         fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chat_id: chatId, text: `⚠️ *DARURAT INVENTARIS* Stok menipis. Segera restock!`, parse_mode: "Markdown" })
+          body: JSON.stringify({ chat_id: chatId, text: `⚠️ *DARURAT INVENTARIS TOKO* Stok menipis. Segera restock!`, parse_mode: "Markdown" })
         }).catch(console.error);
       }
 
       const orderId = newOrderData && newOrderData[0] ? newOrderData[0].id : "BARU";
       catatLog("Pesanan Baru", `Input Order #${orderId} - ${formData.customer_name} (Rp${formData.total_harga}) - Status: ${formData.status_pembayaran}`);
 
-      // LOGIKA MERANGKUM RINCIAN PAKAIAN KE TELEGRAM
       let detailPakaianTxt = "";
       const rincianTerisi = Object.entries(rincianItem).filter(([key, value]) => value > 0);
       if (rincianTerisi.length > 0) {
@@ -564,8 +654,9 @@ export default function Dashboard() {
 
       setIsModalOpen(false); 
       setFormData({ customer_name: "", alamat_detail: "", jarak_ke_toko_km: "", berat_pesanan_kg: "", latitude: "", longitude: "", tipe_layanan: "kiloan", paket_layanan: "Cuci Kering Setrika Lipat", metode_pengiriman: "Diantar Driver Internal", status_pembayaran: "Lunas", jumlah_dp: "0", harga_per_unit: "7000", total_harga: 0 }); 
-      setRincianItem(defaultRincian); setPaymentPhoto(null); setPaymentPreviewUrl(null); 
-      ambilData(); // Tarik ulang data stok agar UI kembali sinkron
+      setRincianItem({ "👕": 0, "👖": 0, "👔": 0, "🧥": 0, "🩲": 0, "🧦": 0, "🧣": 0 }); 
+      setPaymentPhoto(null); setPaymentPreviewUrl(null); 
+      ambilData(); 
 
     } catch (err: any) { alert("Terjadi kesalahan: " + err.message); } 
     finally { setIsSubmitting(false); }
@@ -573,7 +664,8 @@ export default function Dashboard() {
 
   async function handleTambahCustomer(e: React.FormEvent) {
     e.preventDefault(); setIsSubmittingCustomer(true);
-    const { error } = await supabase.from("customers").insert([{ name: customerFormData.name, alamat_detail: customerFormData.alamat_detail, jarak_ke_toko_km: Number(customerFormData.jarak_ke_toko_km) }]);
+    const storeId = sessionStorage.getItem("laundro_store_id");
+    const { error } = await supabase.from("customers").insert([{ store_id: storeId, name: customerFormData.name, alamat_detail: customerFormData.alamat_detail, jarak_ke_toko_km: Number(customerFormData.jarak_ke_toko_km) }]);
     setIsSubmittingCustomer(false);
     if (error) alert("Gagal. Error: " + error.message);
     else { 
@@ -750,11 +842,21 @@ export default function Dashboard() {
             <div className="w-10 h-10 bg-gradient-to-tr from-blue-600 to-purple-500 text-white rounded-xl flex items-center justify-center font-bold text-xl shadow-lg">L</div>
             <div>
               <h2 className="font-extrabold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">LaundroAI</h2>
-              <p className={`text-[10px] font-black uppercase tracking-widest mt-0.5 ${isSecureUnlocked ? 'text-emerald-400' : 'text-blue-400'}`}>
-                {isSecureUnlocked ? '👑 Mode Owner' : '🧑‍💻 Mode Kasir'}
+              
+              {/* UBAH: Sekarang membaca 'isOwnerMode' untuk tampilan teksnya, BUKAN 'isSecureUnlocked' */}
+              <p className={`text-[10px] font-black uppercase tracking-widest mt-0.5 ${isOwnerMode ? 'text-emerald-400' : 'text-blue-400'}`}>
+                {isOwnerMode ? '👑 Mode Owner' : '🧑‍💻 Mode Kasir'}
               </p>
             </div>
           </div>
+          {/* MENU PENGATURAN TOKO */}
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all mb-2 text-white/70 hover:bg-white/10 hover:text-white"
+            >
+              <span className="text-xl">⚙️</span>
+              <span className="font-semibold tracking-wide">Pengaturan Toko</span>
+            </button>
           <nav className="mt-4 px-4 space-y-2">
             {['Dashboard', 'Database Customers', 'Tracking', 'Inventory', 'Calendar', 'Pengeluaran', 'Data Log'].map((menu) => {
               const isLocked = !isSecureUnlocked && ["Calendar", "Pengeluaran", "Data Log"].includes(menu);
@@ -1637,6 +1739,66 @@ export default function Dashboard() {
             </div>
             
             <button onClick={() => setIsCalendarModalOpen(false)} className="w-full mt-5 py-3 bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl font-bold transition-all">Tutup Rincian</button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PENGATURAN TOKO */}
+      {isSettingsOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex justify-center items-center z-[100] p-4">
+          <div className="bg-slate-900 border border-white/10 p-6 sm:p-8 rounded-3xl w-full max-w-md shadow-2xl relative">
+            <button onClick={() => setIsSettingsOpen(false)} className="absolute top-4 right-4 text-white/50 hover:text-white text-2xl font-bold transition-all">✕</button>
+            <h2 className="text-2xl font-extrabold text-white mb-6 flex items-center gap-2">⚙️ Pengaturan Toko</h2>
+
+            {isOwnerMode ? (
+              // TAMPILAN JIKA OWNER
+              <div className="bg-white/5 p-5 rounded-2xl border border-white/10 text-center">
+                <p className="text-sm text-white/70 mb-3">Kode Rahasia Toko Anda:</p>
+                
+                {/* KODE DENGAN TOMBOL SALIN */}
+                <div className="flex flex-col gap-3">
+                  <code className="block bg-black/50 text-emerald-400 p-3 rounded-xl font-mono text-sm break-all border border-emerald-500/30">
+                    {sessionStorage.getItem("laundro_store_id")}
+                  </code>
+                  
+                  <button 
+                    onClick={() => {
+                      const kode = sessionStorage.getItem("laundro_store_id");
+                      if (kode) {
+                        navigator.clipboard.writeText(kode);
+                        alert("✅ Kode berhasil disalin ke clipboard!");
+                      }
+                    }}
+                    className="flex items-center justify-center gap-2 w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm transition-all"
+                  >
+                    <span>📋</span> Salin Kode Toko
+                  </button>
+                </div>
+                
+                <p className="text-xs text-white/50 mt-4">Berikan kode ini ke pegawai Anda. Minta mereka masuk ke menu ini lalu tempelkan kode di atas agar terhubung ke cabang Anda.</p>
+              </div>
+            ) : (
+              // TAMPILAN JIKA KASIR / AKUN BARU
+              <form onSubmit={handleGabungToko} className="space-y-4">
+                <div className="bg-blue-500/10 border border-blue-500/30 p-4 rounded-xl mb-4">
+                  <p className="text-sm text-blue-200">Minta <b>Kode Toko</b> dari Owner Anda, lalu tempelkan di bawah ini untuk menghubungkan akun.</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-white/70 mb-2 uppercase tracking-wider">Kode Referal Toko</label>
+                  <input 
+                    type="text" 
+                    value={inputKodeToko} 
+                    onChange={(e) => setInputKodeToko(e.target.value)}
+                    placeholder="Contoh: 123e4567-e89b-12d3..." 
+                    className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all font-mono text-sm"
+                    required
+                  />
+                </div>
+                <button type="submit" className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold shadow-lg shadow-blue-500/30 hover:opacity-90 transition-all">
+                  🔗 Gabung ke Toko
+                </button>
+              </form>
+            )}
           </div>
         </div>
       )}

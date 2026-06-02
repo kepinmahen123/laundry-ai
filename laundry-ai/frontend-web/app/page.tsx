@@ -69,6 +69,9 @@ export default function Dashboard() {
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
   const [isInventoryModalOpen, setIsInventoryModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [namaToko, setNamaToko] = useState("");
+  const [kontakToko, setKontakToko] = useState("");
+  const [isUpdatingToko, setIsUpdatingToko] = useState(false);
   const [inputKodeToko, setInputKodeToko] = useState("");
   const [kasirId, setKasirId] = useState<string | null>(null);
   const [filterTanggalInventory, setFilterTanggalInventory] = useState<string>("");
@@ -309,6 +312,13 @@ export default function Dashboard() {
       if (profile) {
         sessionStorage.setItem("laundro_store_id", profile.store_id);
         setIsOwnerMode(profile.role === "owner");
+        
+        // +++ MENGAMBIL PROFIL NAMA & KONTAK TOKO +++
+        const { data: storeData } = await supabase.from("stores").select("name, contact").eq("id", profile.store_id).single();
+        if (storeData) {
+          setNamaToko(storeData.name || "");
+          setKontakToko(storeData.contact || "");
+        }
       }
 
       // 4. Cek Ingatan Browser (Apakah PIN keamanan sudah dimasukkan sebelumnya?)
@@ -466,6 +476,24 @@ export default function Dashboard() {
       setKasirId(null);
     } catch (err: any) {
       alert("Gagal mencabut akses: " + err.message);
+    }
+  }
+
+  // ==========================================
+  // FUNGSI SIMPAN PROFIL TOKO (UNTUK KOP NOTA)
+  // ==========================================
+  async function handleSimpanProfilToko(e: React.FormEvent) {
+    e.preventDefault();
+    setIsUpdatingToko(true);
+    const storeId = sessionStorage.getItem("laundro_store_id");
+    try {
+      const { error } = await supabase.from("stores").update({ name: namaToko, contact: kontakToko }).eq("id", storeId);
+      if (error) throw error;
+      alert("✅ Profil Toko Berhasil Diperbarui! Nota digital selanjutnya akan otomatis menggunakan nama ini.");
+    } catch (err: any) {
+      alert("Gagal menyimpan profil toko: " + err.message);
+    } finally {
+      setIsUpdatingToko(false);
     }
   }
 
@@ -699,7 +727,7 @@ export default function Dashboard() {
         detailPakaianTxt = "\n\n👕 *Rincian Pakaian:*\n" + rincianTerisi.map(([key, value]) => `▪️ ${key} : ${value} pcs`).join("\n");
       }
 
-      const notaDigital = `🧾 *NOTA ${formData.status_pembayaran !== 'Belum Bayar' ? '& BUKTI PEMBAYARAN ' : 'PESANAN '}(#${orderId})* 🧾\n👤 *Pelanggan:* ${formData.customer_name}\n💳 *Keuangan:* ${formData.status_pembayaran.toUpperCase()}\n📦 *Paket:* ${formData.paket_layanan} (${formData.tipe_layanan.toUpperCase()})${detailPakaianTxt}\n\n💰 *TOTAL TAGIHAN: Rp ${formData.total_harga.toLocaleString('id-ID')}*`;
+      const notaDigital = `🧾 *NOTA ${formData.status_pembayaran !== 'Belum Bayar' ? '& BUKTI PEMBAYARAN ' : 'PESANAN '}(#${orderId})* 🧾\n🏪 *${namaToko.toUpperCase() || 'LAUNDRY'}*\n📍 ${kontakToko || '-'}\n➖➖➖➖➖➖➖➖➖➖\n👤 *Pelanggan:* ${formData.customer_name}\n💳 *Keuangan:* ${formData.status_pembayaran.toUpperCase()}\n📦 *Paket:* ${formData.paket_layanan} (${formData.tipe_layanan.toUpperCase()})${detailPakaianTxt}\n\n💰 *TOTAL TAGIHAN: Rp ${formData.total_harga.toLocaleString('id-ID')}*`;
 
       if (formData.status_pembayaran !== "Belum Bayar" && paymentPhoto) {
         const telegramFormData = new FormData();
@@ -1817,6 +1845,25 @@ export default function Dashboard() {
                 // 👑 TAMPILAN MUTLAK KHUSUS OWNER
                 // ==========================================
                 <div className="space-y-4">
+
+                  {/* KOTAK BARU: PROFIL TOKO */}
+                  <div className="bg-gradient-to-r from-blue-900/30 to-indigo-900/30 p-5 rounded-2xl border border-blue-500/20 text-left">
+                    <h3 className="text-sm font-bold text-white mb-1 flex items-center gap-2">🏪 Profil Toko (Kop Nota)</h3>
+                    <p className="text-[10px] text-white/50 mb-3">Teks ini akan otomatis tercetak sebagai Header pada nota Telegram.</p>
+                    <form onSubmit={handleSimpanProfilToko} className="space-y-3">
+                      <div>
+                        <label className="text-[10px] text-white/70 uppercase font-bold">Nama Toko</label>
+                        <input type="text" value={namaToko} onChange={e => setNamaToko(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-blue-500 transition-all" required />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-white/70 uppercase font-bold">Alamat & Kontak (Opsional)</label>
+                        <textarea value={kontakToko} onChange={e => setKontakToko(e.target.value)} placeholder="Cth: Jl. Sudirman No. 1 | WA: 08123456" className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-blue-500 transition-all" rows={2} />
+                      </div>
+                      <button type="submit" disabled={isUpdatingToko} className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs transition-all shadow-lg">
+                        {isUpdatingToko ? "Menyimpan..." : "💾 Simpan Profil"}
+                      </button>
+                    </form>
+                  </div>
                   
                   {/* KOTAK 1: KODE TOKO */}
                   <div className="bg-white/5 p-5 rounded-2xl border border-white/10 text-center">

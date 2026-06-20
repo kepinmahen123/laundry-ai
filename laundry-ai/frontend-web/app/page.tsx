@@ -14,14 +14,16 @@ const telegramToken = process.env.NEXT_PUBLIC_TELEGRAM_TOKEN as string;
 const chatId = process.env.NEXT_PUBLIC_TELEGRAM_CHAT_ID as string; 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY as string;
 
-// 🔐 CUSTOM PIN 6-ANGKA UNTUK MENU RAHASIA
-const SECURITY_PIN = "111111"; 
-
 const defaultMapCenter = { lat: -6.2088, lng: 106.8456 }; 
 const mapContainerStyle = { width: "100%", height: "600px", borderRadius: "16px" };
 
 export default function Dashboard() {
   const router = useRouter();
+
+  const [isProfileScreen, setIsProfileScreen] = useState(true);
+  const [profilePinModal, setProfilePinModal] = useState({ isOpen: false, role: "" });
+  const [profilePinInput, setProfilePinInput] = useState("");
+  const [storePins, setStorePins] = useState({ owner: "111111", kasir: "123456" });
 
   // STATE DATABASE
   const [pesanan, setPesanan] = useState<any[]>([]);
@@ -160,10 +162,26 @@ export default function Dashboard() {
     else setPreviewStrukUrl(null);
   }
 
-  const catatLog = async (action: string, details: string) => {
-    const storeId = sessionStorage.getItem("laundro_store_id");
-    if (!storeId) return;
-    try { await supabase.from("audit_logs").insert([{ store_id: storeId, action, details }]); } catch (error) { console.error("Gagal mencatat log", error); }
+  // FUNGSI 1: MENCATAT AKTIVITAS KE DATABASE
+  const catatLog = async (aksi: string, detail: string) => {
+    try {
+      // Ambil nama kasir dan ID toko dari session (Sesuaikan dengan key milik Anda)
+      const kasir = sessionStorage.getItem("laundro_user_name") || "Admin/Sistem"; 
+      const storeId = sessionStorage.getItem("laundro_store_id");
+
+      if (!storeId) return;
+
+      await supabase.from("audit_logs").insert([
+        {
+          store_id: storeId,
+          nama_kasir: kasir,
+          aksi: aksi,
+          detail: detail,
+        }
+      ]);
+    } catch (error) {
+      console.error("Gagal mencatat log:", error);
+    }
   };
 
   const handleMenuClick = (menu: string) => {
@@ -259,6 +277,8 @@ export default function Dashboard() {
     }).catch(console.error);
   };
 
+  
+
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [isSubmittingCustomer, setIsSubmittingCustomer] = useState(false);
   const [customerFormData, setCustomerFormData] = useState({ name: "", alamat_detail: "", jarak_ke_toko_km: "" });
@@ -286,21 +306,24 @@ export default function Dashboard() {
 
       let { data: profile } = await supabase.from("user_profiles").select("*").eq("id", session.user.id).single();
 
-      if (!profile) {
-        const namaToko = `Toko ${session.user.email?.split('@')[0]}`;
-        const { data: newStore, error: storeError } = await supabase.from("stores").insert([{ name: namaToko }]).select().single();
+      if (profile) {
+        sessionStorage.setItem("laundro_store_id", profile.store_id);
+        
+        // 💡 AMBIL DATA TOKO BESERTA PIN
+        const { data: storeData } = await supabase.from("stores").select("*").eq("id", profile.store_id).single();
+        if (storeData) {
+          setNamaToko(storeData.name || "");
+          setKontakToko(storeData.contact || "");
+          setStorePins({ 
+            owner: storeData.pin_owner || "111111", 
+            kasir: storeData.pin_kasir || "123456" 
+          });
+        }
 
-        if (newStore) {
-          const { data: newProfile } = await supabase.from("user_profiles").insert([{
-            id: session.user.id,
-            store_id: newStore.id,
-            role: "kasir"
-          }]).select().single();
-          
-          profile = newProfile;
-          await supabase.from("inventory").insert([{ store_id: newStore.id, deterjen: 0, parfum: 0, plastik: 0 }]);
-        } else {
-          console.error("Gagal membuat toko baru:", storeError);
+      const savedProfile = sessionStorage.getItem("laundro_active_profile");
+        if (savedProfile) {
+          setIsProfileScreen(false);
+          setIsOwnerMode(savedProfile === "owner");
         }
       }
 
@@ -326,6 +349,23 @@ export default function Dashboard() {
     
     cekKeamanan();
   }, [router]);
+
+      // FUNGSI 2: MENGAMBIL DATA LOG UNTUK DITAMPILKAN DI LAYAR
+  const ambilAuditLogs = async () => {
+    const storeId = sessionStorage.getItem("laundro_store_id");
+    if (!storeId) return;
+
+    const { data, error } = await supabase
+      .from("audit_logs")
+      .select("*")
+      .eq("store_id", storeId)
+      .order("created_at", { ascending: false })
+      .limit(100); // Ambil 100 aktivitas terbaru agar tidak berat
+
+    if (data && !error) {
+      setAuditLogs(data);
+    }
+  };
 
   useEffect(() => {
     const kickListener = supabase.channel('radar-pemecatan')
@@ -386,6 +426,13 @@ export default function Dashboard() {
       supabase.removeChannel(realtimeSync);
     };
   }, []);
+
+    // Panggil fungsi ambilAuditLogs saat masuk ke menu Audit Log
+  useEffect(() => {
+    if (activeMenu === "Data Log") { // 💡 UBAH DI SINI
+      ambilAuditLogs();
+    }
+  }, [activeMenu]);
 
   async function ambilData() {
     const storeId = sessionStorage.getItem("laundro_store_id");
@@ -551,25 +598,33 @@ export default function Dashboard() {
   }
 
   async function handleSimpanProfilToko(e: React.FormEvent) {
-    e.preventDefault();
-    setIsUpdatingToko(true);
-    const storeId = sessionStorage.getItem("laundro_store_id");
-    try {
-      const { error } = await supabase.from("stores").update({ name: namaToko, contact: kontakToko }).eq("id", storeId);
-      if (error) throw error;
-      Swal.fire({
-        icon: 'success',
-        title: 'Berhasil',
-        text: 'Profil Toko Berhasil Diperbarui! Nota digital selanjutnya akan menggunakan nama ini.',
-        timer: 3000,
-        showConfirmButton: false
-      });
-    } catch (err: any) {
-      Swal.fire('Gagal', "Gagal menyimpan profil toko: " + err.message, 'error');
-    } finally {
-      setIsUpdatingToko(false);
-    }
+  e.preventDefault();
+  setIsUpdatingToko(true);
+  const storeId = sessionStorage.getItem("laundro_store_id");
+  
+  try {
+    const { error } = await supabase.from("stores").update({ 
+      name: namaToko, 
+      contact: kontakToko,
+      pin_owner: storePins.owner, // <--- PIN Owner yang baru
+      pin_kasir: storePins.kasir  // <--- PIN Kasir yang baru
+    }).eq("id", storeId);
+    
+    if (error) throw error;
+    
+    Swal.fire({
+      icon: 'success',
+      title: 'Berhasil',
+      text: 'Profil Toko dan PIN Keamanan Berhasil Diperbarui!',
+      timer: 3000,
+      showConfirmButton: false
+    });
+  } catch (err: any) {
+    Swal.fire('Gagal', "Gagal menyimpan profil toko: " + err.message, 'error');
+  } finally {
+    setIsUpdatingToko(false);
   }
+}
 
   async function handleGabungToko(e: React.FormEvent) {
     e.preventDefault();
@@ -613,6 +668,33 @@ export default function Dashboard() {
       Swal.fire('Gagal', "Gagal bergabung: " + err.message, 'error');
     }
   }
+
+  const handleSelectProfile = (role: string) => {
+    setProfilePinModal({ isOpen: true, role });
+    setProfilePinInput("");
+  };
+
+  const handleVerifyProfilePin = (e: React.FormEvent) => {
+    e.preventDefault();
+    const correctPin = profilePinModal.role === "owner" ? storePins.owner : storePins.kasir;
+    
+    if (profilePinInput === correctPin) {
+      setIsProfileScreen(false);
+      setIsOwnerMode(profilePinModal.role === "owner");
+      sessionStorage.setItem("laundro_active_profile", profilePinModal.role);
+      setProfilePinModal({ isOpen: false, role: "" });
+      catatLog("Login Profile", `${profilePinModal.role.toUpperCase()} masuk ke sistem.`);
+    } else {
+      Swal.fire({ icon: 'error', title: 'Akses Ditolak', text: 'PIN Salah!' });
+      setProfilePinInput("");
+    }
+  };
+
+  // 💡 Fungsi keluar dari Profile (Kembali ke layar Netflix)
+  const handleGantiProfile = () => {
+    sessionStorage.removeItem("laundro_active_profile");
+    setIsProfileScreen(true);
+  };
 
   async function handleLogout() {
     catatLog("Logout", "Admin/Kasir keluar dari sistem.");
@@ -734,8 +816,10 @@ export default function Dashboard() {
 
       await fetch(`https://api.telegram.org/bot${telegramToken}/sendPhoto`, { method: "POST", body: fileData });
 
-      catatLog("Uang Keluar", `Kategori: ${formPengeluaran.kategori} | Rp ${Number(formPengeluaran.nominal).toLocaleString('id-ID')} | Ket: ${formPengeluaran.deskripsi}`);
-      
+      await catatLog(
+        "PENGELUARAN_BARU", 
+        `Mencatat pengeluaran [${formPengeluaran.kategori}] sebesar Rp ${Number(formPengeluaran.nominal).toLocaleString('id-ID')}`
+      );
       Swal.fire({
         icon: 'success',
         title: 'Berhasil ✅',
@@ -835,7 +919,7 @@ export default function Dashboard() {
           body: JSON.stringify({ chat_id: chatId, text: notaDigital, parse_mode: "Markdown" })
         });
       }
-
+      
       Swal.fire({
         icon: 'success',
         title: 'Pesanan Berhasil!',
@@ -963,6 +1047,65 @@ export default function Dashboard() {
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4 mx-auto"></div></div>;
   if (!session) return null;
+
+  // 🍿 TAMPILAN PEMILIHAN PROFIL ALA NETFLIX
+  if (isProfileScreen) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gradient-to-br from-slate-900 via-gray-900 to-black">
+        
+        {/* LOGO TOKO */}
+        <div className="absolute top-8 text-center animate-fade-in-down">
+          <h1 className="text-4xl md:text-5xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+            {namaToko || "LaundroAI"}
+          </h1>
+        </div>
+
+        <h2 className="text-2xl md:text-4xl font-semibold text-white mb-10 tracking-wide text-center">
+          Siapa yang sedang bertugas?
+        </h2>
+
+        <div className="flex gap-6 md:gap-12 justify-center flex-wrap">
+          {/* AVATAR OWNER */}
+          <div onClick={() => handleSelectProfile("owner")} className="group cursor-pointer flex flex-col items-center gap-4 transition-transform hover:scale-110 active:scale-95">
+            <div className="w-32 h-32 md:w-40 md:h-40 rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-800 flex items-center justify-center border-4 border-transparent group-hover:border-white transition-all shadow-2xl overflow-hidden relative">
+              <span className="text-6xl md:text-7xl">👑</span>
+              <div className="absolute bottom-0 w-full bg-black/40 text-center py-1 text-xs font-bold text-white/80 backdrop-blur-sm">PIN Protected</div>
+            </div>
+            <span className="text-gray-400 group-hover:text-white font-bold text-lg md:text-xl transition-colors">Owner</span>
+          </div>
+
+          {/* AVATAR KASIR */}
+          <div onClick={() => handleSelectProfile("kasir")} className="group cursor-pointer flex flex-col items-center gap-4 transition-transform hover:scale-110 active:scale-95">
+            <div className="w-32 h-32 md:w-40 md:h-40 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center border-4 border-transparent group-hover:border-white transition-all shadow-2xl overflow-hidden relative">
+              <span className="text-6xl md:text-7xl">🧑‍💻</span>
+              <div className="absolute bottom-0 w-full bg-black/40 text-center py-1 text-xs font-bold text-white/80 backdrop-blur-sm">PIN Protected</div>
+            </div>
+            <span className="text-gray-400 group-hover:text-white font-bold text-lg md:text-xl transition-colors">Kasir Toko</span>
+          </div>
+        </div>
+
+        <button onClick={async () => { await supabase.auth.signOut(); router.push("/login"); }} className="absolute bottom-8 px-6 py-2 rounded-full border border-white/20 text-white/50 hover:text-white hover:bg-white/10 font-bold text-sm transition-all">
+          Logout dari Toko
+        </button>
+
+        {/* MODAL INPUT PIN PROFIL */}
+        {profilePinModal.isOpen && (
+          <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[100] p-4 animate-fade-in">
+            <form onSubmit={handleVerifyProfilePin} className="bg-gray-900 border border-white/20 p-8 rounded-3xl w-full max-w-sm text-center shadow-2xl">
+              <div className="text-5xl mb-4">{profilePinModal.role === "owner" ? "👑" : "🧑‍💻"}</div>
+              <h2 className="text-2xl font-black text-white mb-2">PIN {profilePinModal.role.toUpperCase()}</h2>
+              <p className="text-sm text-gray-400 mb-6">Masukkan 6 digit PIN rahasia Anda.</p>
+              <input type="password" required maxLength={6} value={profilePinInput} onChange={e => setProfilePinInput(e.target.value.replace(/\D/g, ''))} autoFocus className="w-full text-center text-3xl tracking-[1em] font-black bg-black/50 border border-white/20 text-white rounded-xl py-4 mb-6 outline-none focus:border-blue-500 transition-colors" placeholder="••••••" />
+              <div className="flex gap-3">
+                <button type="button" onClick={() => setProfilePinModal({ isOpen: false, role: "" })} className="flex-1 py-3 bg-white/10 text-white font-bold rounded-xl hover:bg-white/20 transition-colors">Batal</button>
+                <button type="submit" className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl shadow-lg transition-transform active:scale-95">Masuk</button>
+              </div>
+            </form>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   const pengeluaranTersaring = pengeluaran.filter(p => {
     if (!filterTanggalPengeluaran) {
@@ -1195,24 +1338,66 @@ export default function Dashboard() {
             </div>
           </div>
         ) : activeMenu === "Data Log" ? (
-          <div className="md:mt-0 pl-14 md:pl-0 mb-6">
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight mb-2">Audit Trail Log 🛡️</h1>
-              <p className="text-sm opacity-60">Sistem merekam semua aktivitas user secara real-time untuk mencegah fraud.</p>
-            <div className={`flex-1 overflow-auto rounded-3xl ${glassPanel} p-4`}>
-              <table className="w-full text-left text-sm">
-                <thead className={`${tableHeaderGlass} sticky top-0 z-10 backdrop-blur-xl`}>
-                  <tr><th className="p-4 rounded-tl-xl">Waktu (Timestamp)</th><th className="p-4">Jenis Aksi</th><th className="p-4 rounded-tr-xl">Detail Aktivitas</th></tr>
-                </thead>
-                <tbody className={`divide-y ${isDarkMode ? 'divide-white/5' : 'divide-black/5'}`}>
-                  {auditLogs.map(log => (
-                    <tr key={log.id} className={`${rowHover} transition-colors`}>
-                      <td className="p-4 whitespace-nowrap text-xs opacity-70 font-mono">{new Date(log.created_at).toLocaleString('id-ID')}</td>
-                      <td className="p-4 whitespace-nowrap"><span className="bg-blue-500/10 px-2 py-1 rounded text-xs font-bold text-blue-400 border border-blue-500/20">{log.action}</span></td>
-                      <td className="p-4 text-xs font-medium">{log.details}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <div className="max-w-5xl mx-auto flex flex-col pb-10">
+            <div className="mb-6 flex justify-between items-end border-b border-white/10 pb-4">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight flex items-center gap-2">
+                  Riwayat Aktivitas 🕵️‍♂️
+                </h1>
+                <p className="text-sm mt-1 text-gray-400">Pantau semua pergerakan data, transaksi, dan operasional kasir.</p>
+              </div>
+              <button onClick={ambilAuditLogs} className="bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all active:scale-95">
+                🔄 Refresh
+              </button>
+            </div>
+
+            <div className="bg-black/40 border border-white/10 rounded-2xl p-4 sm:p-6 shadow-xl">
+              {auditLogs.length === 0 ? (
+                <div className="text-center py-10 opacity-50">
+                  <span className="text-4xl mb-3 block">📭</span>
+                  <p className="font-bold">Belum ada aktivitas tercatat.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {auditLogs.map((log) => {
+                    // Penentuan warna label berdasarkan jenis aksi
+                    let warnaBadge = "bg-gray-500/20 text-gray-300 border-gray-500/30";
+                    if (log.aksi.includes("TAMBAH") || log.aksi.includes("BUAT")) warnaBadge = "bg-blue-500/20 text-blue-300 border-blue-500/30";
+                    if (log.aksi.includes("LUNAS") || log.aksi.includes("BAYAR")) warnaBadge = "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
+                    if (log.aksi.includes("HAPUS") || log.aksi.includes("BATAL")) warnaBadge = "bg-red-500/20 text-red-300 border-red-500/30";
+                    if (log.aksi.includes("UBAH") || log.aksi.includes("UPDATE")) warnaBadge = "bg-yellow-500/20 text-yellow-300 border-yellow-500/30";
+
+                    const waktu = new Date(log.created_at).toLocaleString('id-ID', {
+                      day: '2-digit', month: 'short', year: 'numeric', 
+                      hour: '2-digit', minute: '2-digit', second: '2-digit'
+                    });
+
+                    return (
+                      <div key={log.id} className="flex gap-4 p-3 rounded-xl hover:bg-white/5 border border-transparent hover:border-white/5 transition-all">
+                        {/* Garis & Titik Waktu */}
+                        <div className="flex flex-col items-center pt-1 shrink-0">
+                          <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.8)]"></div>
+                          <div className="w-[1px] h-full bg-white/10 mt-2"></div>
+                        </div>
+                        
+                        {/* Konten Log */}
+                        <div className="flex-1 pb-2">
+                          <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                            <span className="text-xs font-mono opacity-60 bg-black px-2 py-0.5 rounded-md border border-white/10">{waktu}</span>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border uppercase tracking-wider ${warnaBadge}`}>
+                              {log.aksi}
+                            </span>
+                            <span className="text-xs font-bold text-indigo-300 flex items-center gap-1">
+                              👤 {log.nama_kasir}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-200">{log.detail}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         ) : activeMenu === "Inventory" ? (
@@ -2096,6 +2281,7 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+  
 
       {/* MODAL PENGATURAN TOKO */}
       {isSettingsOpen && (
@@ -2119,8 +2305,38 @@ export default function Dashboard() {
                         <label className="text-[10px] text-white/70 uppercase font-bold">Alamat & Kontak (Opsional)</label>
                         <textarea value={kontakToko} onChange={e => setKontakToko(e.target.value)} placeholder="Cth: Jl. Sudirman No. 1 | WA: 08123456" className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-blue-500 transition-all" rows={2} />
                       </div>
-                      <button type="submit" disabled={isUpdatingToko} className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs transition-all shadow-lg">
-                        {isUpdatingToko ? "Menyimpan..." : "💾 Simpan Profil"}
+
+                      {/* AREA PENGATURAN PIN YANG SUDAH DIRAPIKAN */}
+                      <div className="pt-3 mt-2 border-t border-white/10">
+                        <p className="text-[10px] text-white/50 mb-3 uppercase font-bold tracking-wider">🔐 Pengaturan Keamanan (PIN)</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-[10px] text-white/70 uppercase font-bold mb-1 block">PIN Owner</label>
+                            <input 
+                              type="text" 
+                              maxLength={6}
+                              value={storePins.owner} 
+                              onChange={e => setStorePins({...storePins, owner: e.target.value.replace(/\D/g, '')})} 
+                              className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-purple-300 text-sm outline-none focus:border-purple-500 tracking-[0.5em] font-mono text-center transition-all" 
+                              placeholder="111111"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-white/70 uppercase font-bold mb-1 block">PIN Kasir</label>
+                            <input 
+                              type="text" 
+                              maxLength={6}
+                              value={storePins.kasir} 
+                              onChange={e => setStorePins({...storePins, kasir: e.target.value.replace(/\D/g, '')})} 
+                              className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-emerald-300 text-sm outline-none focus:border-emerald-500 tracking-[0.5em] font-mono text-center transition-all" 
+                              placeholder="123456"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <button type="submit" disabled={isUpdatingToko} className="w-full mt-2 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs transition-all shadow-lg">
+                        {isUpdatingToko ? "Menyimpan..." : "💾 Simpan Profil & Keamanan"}
                       </button>
                     </form>
                   </div>

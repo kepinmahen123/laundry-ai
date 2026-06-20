@@ -197,24 +197,28 @@ export default function Dashboard() {
   };
 
   const handleVerifyPin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (inputPin === SECURITY_PIN) {
-      setIsSecureUnlocked(true);
-      sessionStorage.setItem("laundro_secure_unlocked", "true"); 
-      setIsPinModalOpen(false);
-      setActiveMenu(pendingMenu);
-      setInputPin("");
-      catatLog("Security Unlock", `Berhasil membuka menu terkunci (${pendingMenu})`);
-    } else {
-      Swal.fire({
-        icon: 'error',
-        title: 'Akses Ditolak',
-        text: 'PIN Salah! Silakan coba lagi.'
-      });
-      setInputPin("");
-      catatLog("Security Breach", `Percobaan akses ilegal ke menu ${pendingMenu} dengan PIN yang salah.`);
-    }
-  };
+  e.preventDefault();
+  
+  // 💡 LOGIKA BARU: Cek PIN berdasarkan siapa yang sedang login (Owner atau Kasir)
+  const correctPin = isOwnerMode ? storePins.owner : storePins.kasir;
+
+  if (inputPin === correctPin) {
+    setIsSecureUnlocked(true);
+    sessionStorage.setItem("laundro_secure_unlocked", "true"); 
+    setIsPinModalOpen(false);
+    setActiveMenu(pendingMenu);
+    setInputPin("");
+    catatLog("Security Unlock", `Berhasil membuka menu terkunci (${pendingMenu}) sebagai ${isOwnerMode ? 'Owner' : 'Kasir'}`);
+  } else {
+    Swal.fire({
+      icon: 'error',
+      title: 'Akses Ditolak',
+      text: 'PIN Salah! Silakan coba lagi.'
+    });
+    setInputPin("");
+    catatLog("Security Breach", `Percobaan akses ilegal ke menu ${pendingMenu} dengan PIN yang salah.`);
+  }
+};
 
   const KANBAN_COLUMNS = ["Antrean", "Sedang Dicuci", "Disetrika", "Packing", "Siap Kirim", "selesai"];
 
